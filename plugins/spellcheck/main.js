@@ -83,6 +83,10 @@ export async function activate(yap) {
   }
 
   async function recheck(view) {
+    // Effects carry absolute document offsets. If an edit lands while the IPC
+    // request is in flight, those offsets no longer describe this view's
+    // document, so discard the response and let the edit's debounced check win.
+    const checkedDoc = view.state.doc;
     const words = candidateWords(view.state);
     if (words.length === 0) {
       view.dispatch({ effects: setMisspellings.of([]) });
@@ -95,11 +99,10 @@ export async function activate(yap) {
     } catch {
       return; // engine unavailable this round; leave the last result in place
     }
+    if (view.state.doc !== checkedDoc) return;
     const ranges = words
       .filter((w) => bad.has(w.word))
       .map((w) => ({ from: w.from, to: w.to }));
-    // The doc may have changed while we awaited; dispatch is still safe because
-    // the field maps the set forward, and the next edit re-checks anyway.
     try {
       view.dispatch({ effects: setMisspellings.of(ranges) });
     } catch {
