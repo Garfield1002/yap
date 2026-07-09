@@ -1,4 +1,4 @@
-import { EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -16,6 +16,13 @@ import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
 import { markdownShortcuts } from "./markdownShortcuts";
+
+/**
+ * Holds the `documentDirectory` facet so it can be reconfigured in place when an
+ * untitled buffer is first saved (or a file is renamed), without tearing down
+ * the editor and losing the undo history and cursor.
+ */
+export const documentDirCompartment = new Compartment();
 
 export interface EditorOptions {
   parent: HTMLElement;
@@ -48,7 +55,7 @@ export function createEditor(opts: EditorOptions): EditorView {
       EditorView.lineWrapping,
       yapMarkdown(yapLezerExtensions),
       yapHighlighting,
-      documentDirectory.of(opts.documentDir ?? ""),
+      documentDirCompartment.of(documentDirectory.of(opts.documentDir ?? "")),
       livePreview(),
       linkHandling,
       // Ahead of the default keymap so Mod-b/i/k and Tab win the precedence tie.

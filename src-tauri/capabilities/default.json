@@ -6,10 +6,12 @@
   "permissions": [
     "core:default",
     "core:event:default",
+    "core:menu:default",
     "core:window:allow-set-title",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "opener:default",
+    "opener:allow-reveal-item-in-dir",
     "dialog:default"
   ]
 }

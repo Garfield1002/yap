@@ -185,6 +185,38 @@ place, but was not exercised live); and a runtime 1–2 MB scroll/typing profile
 in the running webview. KaTeX painting in a live webview also remains unverified
 (see Open items).
 
+### Menu bar, untitled buffers, recent files, theme (post-v1)
+
+A native window menu (Tauri `Menu`, built in `src-tauri/src/menu.rs`) with File /
+Edit / Settings. Most items forward their id to the frontend as a `menu-action`
+event -- the frontend owns the editor, the path, and the dialogs -- while
+`new_window` spawns a second process (`--new`) and Cut/Copy/Paste are Tauri
+predefined items (CodeMirror fills the clipboard with document *source* on the
+native copy event, so a hidden-markup selection still copies correct markdown).
+Undo/Redo are custom items routed to CodeMirror's own history, since a webview's
+native undo does not track it. The menu is rebuilt (`refresh_menu`) whenever the
+open document or theme changes, which is how Open Recent, the enabled state of
+the path-only items, and the theme tick stay current.
+
+This relaxes the original "always has a path" decision: **New opens an untitled
+buffer** with no path and no autosave until the first Save picks a location.
+`App.svelte` gained a document lifecycle -- `openDocument(path|null)` recreates
+the editor; `attachPersistence` / `detachPersistence` bind or drop autosave +
+watcher in place (via a `documentDirectory` compartment) so Save-as, Rename, and
+Delete keep the undo history and cursor. Open replaces the current window.
+
+Recent files and the theme override persist as `state.json` under
+`$YAP_HOME`, else the XDG config dir + `yap` (`config.rs`). The theme override
+is a `data-theme` attribute on the root that beats the system `prefers-color-scheme`
+(the dark palette is written twice in `global.css`, once per selector). Copy HTML
+uses a small dependency-free markdown converter (`markdownToHtml.ts`); math and
+footnotes fall through as source, acceptable on the clipboard.
+
+**Not verified live** (no display in this session): the menu renders and its
+actions behave; Rename/Delete/New Window/Open Recent flows; theme flip; clipboard
+HTML. All of it compiles (`cargo build`), and the pure logic (config store,
+markdown→HTML) is unit-tested.
+
 ## Pitfalls (review checklist)
 
 1. `StateField`, not `ViewPlugin`, for layout-affecting decorations — the #1 CM6

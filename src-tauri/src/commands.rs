@@ -19,6 +19,8 @@ pub const FILE_CHANGED: &str = "file-changed";
 pub struct AppState {
     /// The file named on the command line, if any. One window, one file.
     pub initial_path: Mutex<Option<PathBuf>>,
+    /// Launched with `--new`: open an untitled buffer instead of the picker.
+    pub start_untitled: Mutex<bool>,
     /// Holding the watcher keeps the watch alive; dropping it ends the thread.
     pub watcher: Mutex<Option<RecommendedWatcher>>,
 }
@@ -46,6 +48,28 @@ pub fn get_initial_file(state: State<AppState>) -> Option<String> {
         .ok()?
         .as_ref()
         .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Whether this process was launched with `--new`, so the frontend opens a
+/// blank untitled buffer instead of the open dialog.
+#[tauri::command]
+pub fn get_start_untitled(state: State<AppState>) -> bool {
+    state.start_untitled.lock().map(|b| *b).unwrap_or(false)
+}
+
+/// Delete a file from disk. Used by the File > Delete menu action.
+#[tauri::command]
+pub fn delete_file(path: String) -> Result<(), String> {
+    fs::remove_file(&path).map_err(|e| format!("{path}: {e}"))
+}
+
+/// Rename/move a file on disk. Both paths must be on the same filesystem.
+#[tauri::command]
+pub fn rename_file(from: String, to: String) -> Result<(), String> {
+    if PathBuf::from(&to).exists() {
+        return Err(format!("{to} already exists"));
+    }
+    fs::rename(&from, &to).map_err(|e| format!("{from} -> {to}: {e}"))
 }
 
 /// Reads the file. A path that does not exist yet is not an error: `yap new.md`
