@@ -1,0 +1,42 @@
+/* Styles for rendered markdown constructs.
+   Line classes come from the live-preview decoration field and stay applied
+   while a block shows raw source, so revealing markup never reflows text.
+
+   Selectors are prefixed with `.cm-editor .cm-content` to outrank CodeMirror's
+   own `.cm-line` base theme rule, which is injected at runtime.
+
+   Vertical rhythm uses padding, never margin: CodeMirror measures line heights
+   with offsetHeight, which excludes margins, and mismatched heights make the
+   scrollbar jitter. */
+
+.cm-editor .cm-content .cm-h1,
+.cm-editor .cm-content .cm-h2,
+.cm-editor .cm-content .cm-h3,
+.cm-editor .cm-content .cm-h4,
+.cm-editor .cm-content .cm-h5,
+.cm-editor .cm-content .cm-h6 {
+  font-weight: 700;
+  line-height: 1.3;
+  padding-top: 0.5em;
+  padding-bottom: 0.1em;
+}
+
+.cm-editor .cm-content .cm-h1 { font-size: 1.9em; }
+.cm-editor .cm-content .cm-h2 { font-size: 1.5em; }
+.cm-editor .cm-content .cm-h3 { font-size: 1.25em; font-weight: 600; }
+.cm-editor .cm-content .cm-h4 { font-size: 1.1em; font-weight: 600; }
+.cm-editor .cm-content .cm-h5 { font-size: 1em; font-weight: 600; }
+.cm-editor .cm-content .cm-h6 { font-size: 0.95em; font-weight: 600; color: var(--fg-dim); }
+
+/* Markup that is dimmed rather than collapsed: setext underlines, code fences,
+   footnote definition markers. */
+.cm-md-mark {
+  color: var(--fg-faint);
+}
+
+.cm-inline-code {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 0.1em 0.25em;
+}

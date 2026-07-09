@@ -1,0 +1,80 @@
+/* Every color lives here as a variable. Nothing below this file hardcodes one. */
+
+:root {
+  color-scheme: light dark;
+
+  --font-prose: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", monospace;
+
+  --font-size: 16px;
+  --line-height: 1.7;
+  --measure: 46rem;
+  --editor-pad-x: 2rem;
+  --editor-pad-y: 2.5rem;
+
+  /* light */
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --fg: #1f2328;
+  --fg-dim: #6e7781;
+  --fg-faint: #adb3b9;
+  --accent: #0969da;
+  --border: #d8dee4;
+  --code-bg: #f2f4f7;
+  --code-border: #e3e7eb;
+  --cursor: #0969da;
+  --selection: #b3d4fd;
+  --selection-blur: #dbe6f2;
+  --danger: #cf222e;
+
+  /* syntax */
+  --syn-keyword: #cf222e;
+  --syn-string: #0a6847;
+  --syn-comment: #6e7781;
+  --syn-number: #0550ae;
+  --syn-name: #953800;
+  --syn-type: #6639ba;
+  --syn-operator: #0550ae;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --bg-subtle: #1c1f26;
+    --fg: #dfe3e8;
+    --fg-dim: #8b949e;
+    --fg-faint: #5a626c;
+    --accent: #6cb6ff;
+    --border: #2b313a;
+    --code-bg: #1c2027;
+    --code-border: #2b313a;
+    --cursor: #6cb6ff;
+    --selection: #2f4b6e;
+    --selection-blur: #262c35;
+    --danger: #ff7b72;
+
+    --syn-keyword: #ff7b72;
+    --syn-string: #7ee787;
+    --syn-comment: #8b949e;
+    --syn-number: #79c0ff;
+    --syn-name: #ffa657;
+    --syn-type: #d2a8ff;
+    --syn-operator: #79c0ff;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-prose);
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
