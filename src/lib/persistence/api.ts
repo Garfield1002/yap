@@ -8,6 +8,7 @@ export interface FileContents {
 export interface AppConfig {
   recent: string[];
   theme: string | null;
+  plugins_enabled: string[];
 }
 
 /** The path named on the command line, or null when yap was launched bare. */

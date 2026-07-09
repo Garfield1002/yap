@@ -23,6 +23,10 @@ pub struct AppConfig {
     /// `"light"` or `"dark"` to override the system, or `None` to follow it.
     #[serde(default)]
     pub theme: Option<String>,
+    /// Directory names of the plugins the user has enabled. This is the only
+    /// plugin state core owns; everything else lives in each plugin's data.json.
+    #[serde(default)]
+    pub plugins_enabled: Vec<String>,
 }
 
 /// The directory yap keeps its state in. `$YAP_HOME` wins; otherwise the
@@ -98,6 +102,14 @@ pub fn set_theme(theme: Option<String>) -> Result<(), String> {
 pub fn record_recent(path: String) -> Result<(), String> {
     let mut config = load();
     push_recent(&mut config, &path);
+    save(&config)
+}
+
+/// Persist the set of enabled plugins (directory names).
+#[tauri::command]
+pub fn set_plugins_enabled(enabled: Vec<String>) -> Result<(), String> {
+    let mut config = load();
+    config.plugins_enabled = enabled;
     save(&config)
 }
 

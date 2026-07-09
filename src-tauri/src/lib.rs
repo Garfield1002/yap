@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod menu;
+mod plugins;
 mod watcher;
 
 use std::path::PathBuf;
@@ -34,7 +35,11 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             config::get_config,
             config::set_theme,
             config::record_recent,
+            config::set_plugins_enabled,
             menu::new_window,
+            plugins::list_plugins,
+            plugins::read_plugin_data,
+            plugins::write_plugin_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -33,6 +33,14 @@
     dispatchKey,
   } from "./lib/commands/registry.svelte";
   import { formatChord } from "./lib/commands/keys";
+  import {
+    loadEnabledPlugins,
+    loadPlugin,
+    unloadPlugin,
+  } from "./lib/plugins/loader";
+  import { listPlugins, setPluginsEnabled, type PluginInfo } from "./lib/plugins/rpc";
+  import { pluginMenuItems } from "./lib/plugins/surfaces.svelte";
+  import type { MenuItem } from "./lib/ui/menu";
   import Titlebar from "./lib/ui/Titlebar.svelte";
   import CommandPalette from "./lib/ui/CommandPalette.svelte";
   import StatusBar from "./lib/ui/StatusBar.svelte";
@@ -54,6 +62,10 @@
   let themePref = $state<Theme | null>(null);
   /** Whether the Ctrl+P command palette is showing. */
   let paletteOpen = $state(false);
+  /** Enabled plugin directory names (persisted in state.json). */
+  let enabledPlugins = $state<string[]>([]);
+  /** All discovered plugins, for the Settings → Plugins toggle submenu. */
+  let discovered = $state<PluginInfo[]>([]);
 
   /** Set while we rewrite the buffer from disk, so it is not mistaken for typing. */
   let applyingExternalChange = false;
@@ -311,6 +323,35 @@
     }
   }
 
+  async function refreshPlugins() {
+    try {
+      discovered = await listPlugins();
+    } catch {
+      discovered = [];
+    }
+  }
+
+  /** Rebuild the editor over the current buffer, preserving text, path, and
+   *  persistence. Used after a plugin toggle so newly registered live-preview
+   *  builders and grammar extensions (fixed at editor construction) take hold. */
+  function reloadEditor() {
+    if (!view) return;
+    const text = view.state.doc.toString();
+    const dir = fileState.path ? dirname(fileState.path) : "";
+    view.destroy();
+    view = createEditor({ parent: host, doc: text, documentDir: dir, onDocChange });
+    view.focus();
+  }
+
+  async function togglePlugin(dir: string) {
+    const on = enabledPlugins.includes(dir);
+    enabledPlugins = on ? enabledPlugins.filter((d) => d !== dir) : [...enabledPlugins, dir];
+    await setPluginsEnabled(enabledPlugins);
+    if (on) unloadPlugin(dir);
+    else await loadPlugin(dir);
+    reloadEditor();
+  }
+
   // Route through the close handler so an unsaved untitled buffer is caught.
   async function quit() {
     await win.close();
@@ -445,8 +486,49 @@
       items: [
         cmd("settings.themeLight", { checked: themePref === "light" }),
         cmd("settings.themeDark", { checked: themePref === "dark" }),
+        { type: "separator" },
+        {
+          type: "submenu",
+          label: "Plugins",
+          items:
+            discovered.length > 0
+              ? discovered.map(
+                  (p): MenuItem => ({
+                    type: "action",
+                    id: `plugin:${p.dir}`,
+                    label: p.error ? `${p.name} (error)` : p.name,
+                    checked: enabledPlugins.includes(p.dir),
+                    run: () => void togglePlugin(p.dir),
+                  }),
+                )
+              : [
+                  {
+                    type: "action",
+                    id: "plugins_none",
+                    label: "No plugins installed",
+                    enabled: false,
+                    run: () => {},
+                  },
+                ],
+        },
       ],
     },
+    ...(pluginMenuItems.length > 0
+      ? [
+          {
+            id: "plugins",
+            label: "Plugins",
+            items: pluginMenuItems.map(
+              (item): MenuItem => ({
+                type: "action",
+                id: item.id,
+                label: item.label,
+                run: item.run,
+              }),
+            ),
+          } satisfies Menu,
+        ]
+      : []),
   ]);
 
   /** Decide what to open on launch: the CLI file if one was passed, otherwise
@@ -457,9 +539,15 @@
       const cfg = await getConfig();
       themePref = cfg.theme === "light" || cfg.theme === "dark" ? cfg.theme : null;
       recent = cfg.recent;
+      enabledPlugins = cfg.plugins_enabled ?? [];
     } catch {
       // No config yet: menus fall back to their empty states.
     }
+
+    // Activate plugins before the first editor is built: their live-preview
+    // builders and grammar extensions must be collected before createEditor.
+    await loadEnabledPlugins(enabledPlugins);
+    void refreshPlugins();
 
     const fromCli = await getInitialFile();
     if (fromCli) {
@@ -537,7 +625,13 @@
 
 <svelte:window onkeydown={(e) => dispatchKey(e)} />
 
-<Titlebar {menus} onmenuopen={(id) => id === "file" && refreshRecent()} />
+<Titlebar
+  {menus}
+  onmenuopen={(id) => {
+    if (id === "file") refreshRecent();
+    else if (id === "settings") refreshPlugins();
+  }}
+/>
 <main bind:this={host}></main>
 <StatusBar />
 

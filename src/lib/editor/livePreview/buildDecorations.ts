@@ -10,6 +10,7 @@ import { tasklist } from "./builders/tasklist";
 import { codeblock } from "./builders/codeblock";
 import { math } from "./builders/math";
 import { footnotes } from "./builders/footnotes";
+import { pluginBuilders } from "./pluginBuilders";
 
 type NodeBuilder = (node: Parameters<typeof headings>[0], b: Builder) => boolean | void;
 
@@ -40,10 +41,14 @@ export function buildDecorations(state: EditorState, regions?: Region[]): Decora
 
   const b = new Builder(state, regions ?? activeRegions(state));
 
+  // Built-ins first, then any plugin-contributed builders. Plugins key off
+  // their own node names, so ordering against the built-ins does not matter.
+  const builders = [...BUILDERS, ...pluginBuilders()];
+
   syntaxTree(state).iterate({
     enter: (node) => {
       if (OPAQUE.has(node.name)) return false;
-      for (const build of BUILDERS) {
+      for (const build of builders) {
         if (build(node, b) === false) return false;
       }
       return undefined;

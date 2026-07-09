@@ -14,6 +14,8 @@ import { searchPanel } from "./searchPanel";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
 import { yapLezerExtensions } from "./lezer";
+import { pluginGrammar } from "./lezer/pluginGrammar";
+import { pluginExtensions } from "./pluginExtensions";
 import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
@@ -60,7 +62,9 @@ export function createEditor(opts: EditorOptions): EditorView {
       search({ createPanel: searchPanel }),
       EditorState.allowMultipleSelections.of(true),
       EditorView.lineWrapping,
-      yapMarkdown(yapLezerExtensions),
+      // Built-in grammar (math, footnotes) plus any plugin-contributed Lezer
+      // extensions collected before this editor was created.
+      yapMarkdown([...yapLezerExtensions, ...pluginGrammar()]),
       yapHighlighting,
       documentDirCompartment.of(documentDirectory.of(opts.documentDir ?? "")),
       livePreview(),
@@ -74,6 +78,9 @@ export function createEditor(opts: EditorOptions): EditorView {
       // preview (see the focus watcher in livePreview).
       keymap.of([{ key: "Escape", run: (view) => (view.contentDOM.blur(), true) }]),
       yapTheme,
+      // Raw CM6 extensions contributed by enabled plugins, collected before the
+      // editor was built.
+      ...pluginExtensions(),
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown
       // keymap (Enter/Backspace) is installed by `yapMarkdown` above.
