@@ -11,8 +11,10 @@
     { id: "settings", label: "Settings" },
   ];
 
-  function openMenu(which: "file" | "edit" | "settings") {
-    void popupMenu(which, !!fileState.path);
+  function openMenu(which: "file" | "edit" | "settings", event: MouseEvent) {
+    // Drop the menu under its button: pass the button's bottom-left corner.
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    void popupMenu(which, !!fileState.path, rect.left, rect.bottom);
   }
 </script>
 
@@ -21,7 +23,7 @@
 <header class="titlebar">
   <nav class="menus">
     {#each menus as menu (menu.id)}
-      <button class="menu-btn" onclick={() => openMenu(menu.id)}>{menu.label}</button>
+      <button class="menu-btn" onclick={(e) => openMenu(menu.id, e)}>{menu.label}</button>
     {/each}
   </nav>
 

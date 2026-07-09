@@ -37,5 +37,9 @@ export const recordRecent = (path: string) => invoke<void>("record_recent", { pa
 
 /** Pop up a native submenu ("file" | "edit" | "settings") under its title-bar
  *  button. `hasPath` gates the File items that only apply to a saved file. */
-export const popupMenu = (which: "file" | "edit" | "settings", hasPath: boolean) =>
-  invoke<void>("popup_menu", { which, hasPath });
+export const popupMenu = (
+  which: "file" | "edit" | "settings",
+  hasPath: boolean,
+  x: number,
+  y: number,
+) => invoke<void>("popup_menu", { which, hasPath, x, y });

@@ -122,6 +122,8 @@ pub fn popup_menu<R: Runtime>(
     window: tauri::Window<R>,
     which: String,
     has_path: bool,
+    x: f64,
+    y: f64,
 ) -> Result<(), String> {
     let submenu = match which.as_str() {
         "file" => file_submenu(&app, has_path),
@@ -130,7 +132,11 @@ pub fn popup_menu<R: Runtime>(
         other => return Err(format!("unknown menu: {other}")),
     }
     .map_err(|e| e.to_string())?;
-    submenu.popup(window).map_err(|e| e.to_string())
+    // `x`/`y` are the button's bottom-left in CSS pixels, i.e. logical
+    // coordinates relative to the window, so the menu drops under its button.
+    submenu
+        .popup_at(window, tauri::LogicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
 }
 
 fn spawn_new_window() {
