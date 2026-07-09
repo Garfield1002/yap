@@ -39,11 +39,5 @@ export const setThemeSetting = (theme: string | null) => invoke<void>("set_theme
 
 export const recordRecent = (path: string) => invoke<void>("record_recent", { path });
 
-/** Pop up a native submenu ("file" | "edit" | "settings") under its title-bar
- *  button. `hasPath` gates the File items that only apply to a saved file. */
-export const popupMenu = (
-  which: "file" | "edit" | "settings",
-  hasPath: boolean,
-  x: number,
-  y: number,
-) => invoke<void>("popup_menu", { which, hasPath, x, y });
+/** Spawn a second editor process showing an untitled buffer (File > New Window). */
+export const newWindow = () => invoke<void>("new_window");

@@ -20,9 +20,8 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             start_untitled: Mutex::new(start_untitled),
             watcher: Mutex::new(None),
         })
-        // No persistent menu bar: the frontend draws a themed title bar and
-        // pops native submenus up from it via `popup_menu`.
-        .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
+        // No native menus at all: the frontend draws its own title bar and
+        // dropdown menus. New Window is the one process-level action left.
         .invoke_handler(tauri::generate_handler![
             commands::get_initial_file,
             commands::get_start_untitled,
@@ -35,7 +34,7 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             config::get_config,
             config::set_theme,
             config::record_recent,
-            menu::popup_menu,
+            menu::new_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

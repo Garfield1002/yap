@@ -1,29 +1,66 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { basename, fileState } from "../persistence/fileStore.svelte";
-  import { popupMenu } from "../persistence/api";
+  import type { Menu as MenuModel } from "./menu";
+  import Menu from "./Menu.svelte";
+
+  let {
+    menus,
+    onmenuopen,
+  }: { menus: MenuModel[]; onmenuopen?: (id: string) => void } = $props();
 
   const win = getCurrentWindow();
 
-  const menus: Array<{ id: "file" | "edit" | "settings"; label: string }> = [
-    { id: "file", label: "File" },
-    { id: "edit", label: "Edit" },
-    { id: "settings", label: "Settings" },
-  ];
+  // Which top-level menu is dropped open, by id, or null when none is.
+  let open = $state<string | null>(null);
 
-  function openMenu(which: "file" | "edit" | "settings", event: MouseEvent) {
-    // Drop the menu under its button: pass the button's bottom-left corner.
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    void popupMenu(which, !!fileState.path, rect.left, rect.bottom);
+  function toggle(id: string) {
+    if (open === id) {
+      open = null;
+      return;
+    }
+    onmenuopen?.(id);
+    open = id;
+  }
+
+  // Once a menu is open, hovering onto a sibling button switches to it, like a
+  // native menu bar.
+  function hover(id: string) {
+    if (open !== null && open !== id) {
+      onmenuopen?.(id);
+      open = id;
+    }
+  }
+
+  function close() {
+    open = null;
   }
 </script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === "Escape") close();
+  }}
+/>
 
 <!-- data-tauri-drag-region only on the non-interactive centre, so the menu and
      window buttons stay clickable. -->
 <header class="titlebar">
   <nav class="menus">
     {#each menus as menu (menu.id)}
-      <button class="menu-btn" onclick={(e) => openMenu(menu.id, e)}>{menu.label}</button>
+      <div class="menu-slot">
+        <button
+          class="menu-btn"
+          class:active={open === menu.id}
+          onclick={() => toggle(menu.id)}
+          onmouseenter={() => hover(menu.id)}>{menu.label}</button
+        >
+        {#if open === menu.id}
+          <div class="dropdown">
+            <Menu items={menu.items} onclose={close} />
+          </div>
+        {/if}
+      </div>
     {/each}
   </nav>
 
@@ -45,8 +82,15 @@
   </div>
 </header>
 
+{#if open !== null}
+  <!-- Click-away backdrop: any click outside the dropdown closes the menu. -->
+  <button class="backdrop" aria-label="Close menu" onclick={close}></button>
+{/if}
+
 <style>
   .titlebar {
+    position: relative;
+    z-index: 20;
     flex: 0 0 auto;
     display: flex;
     align-items: stretch;
@@ -62,6 +106,10 @@
     align-items: stretch;
     padding-left: 0.15rem;
   }
+  .menu-slot {
+    position: relative;
+    display: flex;
+  }
   .menu-btn {
     border: 0;
     background: transparent;
@@ -70,8 +118,15 @@
     padding: 0 0.7rem;
     cursor: pointer;
   }
-  .menu-btn:hover {
+  .menu-btn:hover,
+  .menu-btn.active {
     background: color-mix(in srgb, var(--fg) 10%, transparent);
+  }
+  .dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 30;
   }
 
   .title {
@@ -117,5 +172,15 @@
   .ctl.close:hover {
     background: var(--danger);
     color: #fff;
+  }
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: default;
   }
 </style>

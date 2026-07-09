@@ -3,7 +3,7 @@
   import { EditorView } from "@codemirror/view";
   import { undo, redo } from "@codemirror/commands";
   import { openSearchPanel } from "@codemirror/search";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open, save as saveDialog, ask } from "@tauri-apps/plugin-dialog";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -17,12 +17,15 @@
     deleteFile,
     renameFile,
     recordRecent,
+    getConfig,
+    newWindow,
   } from "./lib/persistence/api";
   import { Autosave } from "./lib/persistence/autosave";
   import { watchFile } from "./lib/persistence/watcher";
   import { basename, dirname, fileState } from "./lib/persistence/fileStore.svelte";
   import { initTheme, setTheme, type Theme } from "./lib/ui/theme";
   import { markdownToHtml } from "./lib/export/markdownToHtml";
+  import type { Menu } from "./lib/ui/menu";
   import Titlebar from "./lib/ui/Titlebar.svelte";
   import StatusBar from "./lib/ui/StatusBar.svelte";
   import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
@@ -36,7 +39,11 @@
   let autosave: Autosave | undefined;
   let unlistenWatch: UnlistenFn | undefined;
   let unlistenClose: UnlistenFn | undefined;
-  let unlistenMenu: UnlistenFn | undefined;
+
+  /** Recent files for the File menu, refreshed whenever it is opened. */
+  let recent = $state<string[]>([]);
+  /** Persisted theme override, so the Settings menu can tick the active one. */
+  let themePref = $state<Theme | null>(null);
 
   /** Set while we rewrite the buffer from disk, so it is not mistaken for typing. */
   let applyingExternalChange = false;
@@ -257,7 +264,41 @@
   }
 
   async function chooseTheme(theme: Theme) {
+    themePref = theme;
     await setTheme(theme);
+  }
+
+  function openFind() {
+    if (!view) return;
+    openSearchPanel(view);
+    view.focus();
+  }
+
+  /** Copy/Cut run through the DOM so CodeMirror's own copy handler fires and
+   *  fills the clipboard with document source (hidden markup and all). Paste
+   *  reads text and inserts it via a transaction. */
+  function clipboard(kind: "copy" | "cut") {
+    view?.focus();
+    document.execCommand(kind);
+  }
+
+  async function pasteText() {
+    if (!view) return;
+    view.focus();
+    try {
+      const text = await navigator.clipboard.readText();
+      view.dispatch(view.state.replaceSelection(text));
+    } catch (error) {
+      fileState.error = `paste failed: ${error}`;
+    }
+  }
+
+  async function refreshRecent() {
+    try {
+      recent = (await getConfig()).recent;
+    } catch {
+      recent = [];
+    }
   }
 
   // Route through the close handler so an unsaved untitled buffer is caught.
@@ -279,45 +320,101 @@
     closeResolver = null;
   }
 
-  async function handleMenuAction(name: string, path?: string | null) {
-    switch (name) {
-      case "new":
-        return openDocument(null);
-      case "open":
-        return openViaDialog();
-      case "open-path":
-        return path ? openDocument(path) : undefined;
-      case "save":
-        return save();
-      case "rename":
-        return rename();
-      case "delete":
-        return del();
-      case "copy_path":
-        return copyPath();
-      case "open_location":
-        return fileState.path ? revealItemInDir(fileState.path) : undefined;
-      case "find":
-      case "replace":
-        if (view) {
-          openSearchPanel(view);
-          view.focus();
-        }
-        return;
-      case "undo":
-        if (view) undo(view);
-        return;
-      case "redo":
-        if (view) redo(view);
-        return;
-      case "copy_html":
-        return copyHtml();
-      case "theme_light":
-        return chooseTheme("light");
-      case "theme_dark":
-        return chooseTheme("dark");
-      case "quit":
-        return quit();
+  const hasPath = $derived(!!fileState.path);
+
+  /** The title-bar menus. Rebuilt reactively as the open path, recent list, and
+   *  theme change, replacing the native muda submenus. */
+  const menus = $derived<Menu[]>([
+    {
+      id: "file",
+      label: "File",
+      items: [
+        { type: "action", id: "new", label: "New", accelerator: "Ctrl+N", run: () => openDocument(null) },
+        { type: "action", id: "new_window", label: "New Window", accelerator: "Ctrl+Shift+N", run: () => void newWindow() },
+        { type: "action", id: "open", label: "Open…", accelerator: "Ctrl+O", run: () => void openViaDialog() },
+        {
+          type: "submenu",
+          label: "Open Recent",
+          enabled: recent.length > 0,
+          items:
+            recent.length > 0
+              ? recent.map((p, i) => ({
+                  type: "action" as const,
+                  id: `recent:${i}`,
+                  label: basename(p),
+                  run: () => void openDocument(p),
+                }))
+              : [{ type: "action" as const, id: "recent_none", label: "No recent files", enabled: false, run: () => {} }],
+        },
+        { type: "separator" },
+        { type: "action", id: "save", label: "Save", accelerator: "Ctrl+S", run: () => void save() },
+        { type: "action", id: "rename", label: "Rename…", enabled: hasPath, run: () => void rename() },
+        { type: "action", id: "delete", label: "Delete", enabled: hasPath, run: () => void del() },
+        { type: "separator" },
+        { type: "action", id: "copy_path", label: "Copy Path", enabled: hasPath, run: () => void copyPath() },
+        {
+          type: "action",
+          id: "open_location",
+          label: "Open File Location",
+          enabled: hasPath,
+          run: () => (fileState.path ? void revealItemInDir(fileState.path) : undefined),
+        },
+        { type: "separator" },
+        { type: "action", id: "quit", label: "Quit", accelerator: "Ctrl+Q", run: () => void quit() },
+      ],
+    },
+    {
+      id: "edit",
+      label: "Edit",
+      items: [
+        { type: "action", id: "undo", label: "Undo", accelerator: "Ctrl+Z", run: () => view && undo(view) },
+        { type: "action", id: "redo", label: "Redo", accelerator: "Ctrl+Y", run: () => view && redo(view) },
+        { type: "separator" },
+        { type: "action", id: "cut", label: "Cut", accelerator: "Ctrl+X", run: () => clipboard("cut") },
+        { type: "action", id: "copy", label: "Copy", accelerator: "Ctrl+C", run: () => clipboard("copy") },
+        { type: "action", id: "copy_html", label: "Copy HTML", run: () => void copyHtml() },
+        { type: "action", id: "paste", label: "Paste", accelerator: "Ctrl+V", run: () => void pasteText() },
+        { type: "separator" },
+        { type: "action", id: "find", label: "Find…", accelerator: "Ctrl+F", run: openFind },
+        { type: "action", id: "replace", label: "Find and Replace…", accelerator: "Ctrl+Alt+F", run: openFind },
+      ],
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      items: [
+        { type: "action", id: "theme_light", label: "Light Theme", checked: themePref === "light", run: () => void chooseTheme("light") },
+        { type: "action", id: "theme_dark", label: "Dark Theme", checked: themePref === "dark", run: () => void chooseTheme("dark") },
+      ],
+    },
+  ]);
+
+  /** App-level accelerators that the retired native menu used to own. Editor
+   *  shortcuts (undo/redo, find, clipboard) stay with CodeMirror's own keymaps;
+   *  these are the window/document ones that have no editor binding. */
+  function onKeydown(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (e.shiftKey) {
+      if (key === "n") {
+        e.preventDefault();
+        void newWindow();
+      }
+      return;
+    }
+    switch (key) {
+      case "n":
+        e.preventDefault();
+        return void openDocument(null);
+      case "o":
+        e.preventDefault();
+        return void openViaDialog();
+      case "s":
+        e.preventDefault();
+        return void save();
+      case "q":
+        e.preventDefault();
+        return void quit();
     }
   }
 
@@ -325,6 +422,13 @@
    *  an untitled buffer. */
   async function boot() {
     await initTheme();
+    try {
+      const cfg = await getConfig();
+      themePref = cfg.theme === "light" || cfg.theme === "dark" ? cfg.theme : null;
+      recent = cfg.recent;
+    } catch {
+      // No config yet: menus fall back to their empty states.
+    }
 
     const fromCli = await getInitialFile();
     if (fromCli) {
@@ -366,10 +470,6 @@
       await save();
       if (fileState.path) await win.destroy();
     });
-
-    unlistenMenu = await listen<{ name: string; path: string | null }>("menu-action", (event) =>
-      handleMenuAction(event.payload.name, event.payload.path),
-    );
   }
 
   function keepMine() {
@@ -399,13 +499,14 @@
     return () => {
       unlistenWatch?.();
       unlistenClose?.();
-      unlistenMenu?.();
       view?.destroy();
     };
   });
 </script>
 
-<Titlebar />
+<svelte:window onkeydown={onKeydown} />
+
+<Titlebar {menus} onmenuopen={(id) => id === "file" && refreshRecent()} />
 <main bind:this={host}></main>
 <StatusBar />
 
