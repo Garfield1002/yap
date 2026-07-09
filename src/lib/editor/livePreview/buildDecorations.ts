@@ -1,6 +1,6 @@
 import type { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { activeRegions } from "./activeRegions";
+import { activeRegions, type Region } from "./activeRegions";
 import { Builder, type Decorations } from "./builder";
 import { headings } from "./builders/headings";
 import { inline } from "./builders/inline";
@@ -17,13 +17,17 @@ const BUILDERS: NodeBuilder[] = [headings, codeblock, images, links, tasklist, i
 /** v1 renders no table markup; a half-decorated table is worse than a raw one. */
 const OPAQUE = new Set(["Table"]);
 
-export function buildDecorations(state: EditorState): Decorations {
+/**
+ * `regions` names the blocks to show as raw source. It defaults to whatever the
+ * selection implies, but the decoration field pins it while a block is being
+ * edited -- see `decorationField.ts`.
+ */
+export function buildDecorations(state: EditorState, regions?: Region[]): Decorations {
   // Without this the parse only covers the viewport-ish prefix on a large file
   // and the tail would render as plain text until the user scrolled into it.
   ensureSyntaxTree(state, state.doc.length, 100);
 
-  const regions = activeRegions(state);
-  const b = new Builder(state, regions);
+  const b = new Builder(state, regions ?? activeRegions(state));
 
   syntaxTree(state).iterate({
     enter: (node) => {

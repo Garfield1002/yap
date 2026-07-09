@@ -47,6 +47,13 @@
   text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
   text-underline-offset: 2px;
 }
+
+/* Ctrl/Cmd is what opens a link; a plain click edits it. Only promise a click
+   target while the modifier is actually down. */
+.cm-editor.cm-mod-held .cm-link {
+  cursor: pointer;
+  text-decoration-color: var(--accent);
+}
 /* Fenced and indented code: one slab, monospace, fences dimmed not hidden. */
 .cm-editor .cm-content .cm-code-line {
   font-family: var(--font-mono);

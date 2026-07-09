@@ -13,7 +13,7 @@ import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
 import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
-import { linkClickHandler } from "./linkHandler";
+import { linkHandling } from "./linkHandler";
 
 export interface EditorOptions {
   parent: HTMLElement;
@@ -48,7 +48,7 @@ export function createEditor(opts: EditorOptions): EditorView {
       yapHighlighting,
       documentDirectory.of(opts.documentDir ?? ""),
       livePreview(),
-      linkClickHandler,
+      linkHandling,
       yapTheme,
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown
