@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EditorState, EditorSelection, ChangeSet } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
-import { livePreviewField } from "./decorationField";
+import { livePreviewField, refreshDecorations } from "./decorationField";
 import { contains, mapRegions } from "./pinning";
 
 const DOC = ["para **bold**", "", "```", "Code", "```", "", "# Heading after", "", "tail *em*"].join(
@@ -17,8 +17,17 @@ function mkState(doc: string, cursor: number) {
     selection: EditorSelection.cursor(cursor),
     extensions: [markdown({ base: markdownLanguage }), livePreviewField],
   });
-  ensureSyntaxTree(state, doc.length, 5000);
-  return state;
+  // `ensureSyntaxTree` returns null when it cannot finish inside its budget,
+  // which under the parallel suite's CPU contention happens even for a tiny
+  // doc. Loop until the tree really covers the doc.
+  let tree = ensureSyntaxTree(state, doc.length, 5000);
+  while (!tree || tree.length < doc.length) tree = ensureSyntaxTree(state, doc.length, 5000);
+  // `livePreviewField.create` ran inside `EditorState.create` above, off
+  // whatever the incremental 100ms parse in `buildDecorations` had reached --
+  // which under load can stop short of the tail. Now that the tree is complete,
+  // rebuild the field from it. In the app the `parseTailWatcher` does this; the
+  // test has no view, so it does it here.
+  return state.update({ effects: refreshDecorations.of(null) }).state;
 }
 
 /** All decoration classes present, as `class` or `class:text`. */

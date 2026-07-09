@@ -11,6 +11,7 @@ import {
 import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
+import { yapLezerExtensions } from "./lezer";
 import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
@@ -44,7 +45,7 @@ export function createEditor(opts: EditorOptions): EditorView {
       bracketMatching(),
       EditorState.allowMultipleSelections.of(true),
       EditorView.lineWrapping,
-      yapMarkdown(),
+      yapMarkdown(yapLezerExtensions),
       yapHighlighting,
       documentDirectory.of(opts.documentDir ?? ""),
       livePreview(),

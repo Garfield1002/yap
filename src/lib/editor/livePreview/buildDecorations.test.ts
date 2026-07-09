@@ -10,8 +10,19 @@ function mkState(doc: string, cursor = 0) {
     selection: EditorSelection.cursor(Math.min(cursor, doc.length)),
     extensions: [markdown({ base: markdownLanguage })],
   });
-  ensureSyntaxTree(state, doc.length, 5000);
+  forceParse(state, doc.length);
   return state;
+}
+
+/**
+ * A guaranteed-complete parse. `ensureSyntaxTree` returns null when it cannot
+ * finish inside its time budget, which under the CPU contention of the parallel
+ * test suite happens even for a tiny document. Loop until the tree really
+ * covers the doc so decoration assertions never race the parser.
+ */
+function forceParse(state: EditorState, length: number) {
+  let tree = ensureSyntaxTree(state, length, 5000);
+  while (!tree || tree.length < length) tree = ensureSyntaxTree(state, length, 5000);
 }
 
 interface Snapshot {

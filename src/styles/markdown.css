@@ -104,3 +104,32 @@
   text-decoration: line-through;
   text-decoration-color: var(--fg-faint);
 }
+
+/* Math. Inline KaTeX rides on the text baseline; block math centres on its own
+   line. KaTeX ships its own layout, so we only place the widget. */
+.cm-math-inline {
+  display: inline-block;
+}
+.cm-math-block {
+  display: block;
+  text-align: center;
+  padding: 0.4em 0;
+  overflow-x: auto;
+}
+/* A half-typed formula: KaTeX renders the message in this colour. */
+.cm-math .katex-error {
+  color: var(--danger);
+}
+
+/* Footnotes. A reference is a small superscript label; a definition line is
+   dimmed as an aside, its `[^label]:` marker kept (via .cm-md-mark) but faint. */
+.cm-footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--accent);
+}
+.cm-editor .cm-content .cm-footnote-def {
+  color: var(--fg-dim);
+  font-size: 0.9em;
+}

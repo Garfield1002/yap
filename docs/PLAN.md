@@ -129,7 +129,7 @@ Two traps, both guarded by tests:
 - [x] **Phase 3 — Full rendering.** Links (Ctrl+Click), images (+asset
       protocol), checkboxes, highlighted code blocks. Plus block pinning and the
       Ctrl-held link cursor.
-- [ ] **Phase 4 — Custom Lezer extensions.** Math + footnotes + widgets + KaTeX
+- [x] **Phase 4 — Custom Lezer extensions.** Math + footnotes + widgets + KaTeX
       cache. The parse-tree snapshot tests over adversarial fixtures are the
       most valuable tests in the repo.
 - [ ] **Phase 5 — Shortcuts, polish, packaging.** Keymap commands, typography
@@ -189,6 +189,11 @@ Lezer's own `LinkReference` and `FencedCode` are the reference models.
   confirmed to render.
 - **`onCloseRequested` → `flush()` → `destroy()` is unverified end to end.**
   `flush()` itself is unit-tested.
+- **KaTeX rendering is unverified in a live webview.** Parsing, decoration
+  building and the widget/cache logic are unit-tested (KaTeX is stubbed there,
+  which also keeps its heavy module out of the parallel test workers), and the
+  frontend bundles the CSS and fonts, but no formula has been confirmed to paint
+  in the running app. Belongs in the Phase 5 verification pass.
 
 ## Verifying
 

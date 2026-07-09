@@ -20,7 +20,11 @@ function mkState(doc: string, cursor: number, documentDir = "/home/j/notes") {
     selection: EditorSelection.cursor(Math.min(cursor, doc.length)),
     extensions: [markdown({ base: markdownLanguage }), documentDirectory.of(documentDir)],
   });
-  ensureSyntaxTree(state, doc.length, 5000);
+  // Loop until the parse really completes: `ensureSyntaxTree` returns null when
+  // it runs out of budget, which under the parallel suite's CPU load happens
+  // even for a tiny doc.
+  let tree = ensureSyntaxTree(state, doc.length, 5000);
+  while (!tree || tree.length < doc.length) tree = ensureSyntaxTree(state, doc.length, 5000);
   return state;
 }
 

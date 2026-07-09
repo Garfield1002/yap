@@ -8,11 +8,22 @@ import { links } from "./builders/links";
 import { images } from "./builders/images";
 import { tasklist } from "./builders/tasklist";
 import { codeblock } from "./builders/codeblock";
+import { math } from "./builders/math";
+import { footnotes } from "./builders/footnotes";
 
 type NodeBuilder = (node: Parameters<typeof headings>[0], b: Builder) => boolean | void;
 
 /** Order is irrelevant: each builder keys off a disjoint set of node names. */
-const BUILDERS: NodeBuilder[] = [headings, codeblock, images, links, tasklist, inline];
+const BUILDERS: NodeBuilder[] = [
+  headings,
+  codeblock,
+  images,
+  links,
+  tasklist,
+  math,
+  footnotes,
+  inline,
+];
 
 /** v1 renders no table markup; a half-decorated table is worse than a raw one. */
 const OPAQUE = new Set(["Table"]);
