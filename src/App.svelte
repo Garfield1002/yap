@@ -25,8 +25,16 @@
   import { basename, dirname, fileState } from "./lib/persistence/fileStore.svelte";
   import { initTheme, setTheme, type Theme } from "./lib/ui/theme";
   import { markdownToHtml } from "./lib/export/markdownToHtml";
-  import type { Menu } from "./lib/ui/menu";
+  import type { Menu, MenuAction } from "./lib/ui/menu";
+  import {
+    registerCommand,
+    getCommand,
+    runCommand,
+    dispatchKey,
+  } from "./lib/commands/registry.svelte";
+  import { formatChord } from "./lib/commands/keys";
   import Titlebar from "./lib/ui/Titlebar.svelte";
+  import CommandPalette from "./lib/ui/CommandPalette.svelte";
   import StatusBar from "./lib/ui/StatusBar.svelte";
   import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
   import UnsavedDialog from "./lib/ui/UnsavedDialog.svelte";
@@ -44,6 +52,8 @@
   let recent = $state<string[]>([]);
   /** Persisted theme override, so the Settings menu can tick the active one. */
   let themePref = $state<Theme | null>(null);
+  /** Whether the Ctrl+P command palette is showing. */
+  let paletteOpen = $state(false);
 
   /** Set while we rewrite the buffer from disk, so it is not mistaken for typing. */
   let applyingExternalChange = false;
@@ -320,18 +330,74 @@
     closeResolver = null;
   }
 
-  const hasPath = $derived(!!fileState.path);
+  const hasPath = () => !!fileState.path;
 
-  /** The title-bar menus. Rebuilt reactively as the open path, recent list, and
-   *  theme change, replacing the native muda submenus. */
+  // The core commands. Registered once, up front, so the menus (built below) and
+  // the palette both resolve them, and the keybinding layer can dispatch their
+  // chords. Plugins will add to this same registry. Editor commands carry a
+  // display-only `accelerator` because CodeMirror's own keymap owns the key.
+  registerCommand({ id: "file.new", title: "New", keybinding: "Mod+N", run: () => openDocument(null) });
+  registerCommand({ id: "file.newWindow", title: "New Window", keybinding: "Mod+Shift+N", run: () => void newWindow() });
+  registerCommand({ id: "file.open", title: "Open…", keybinding: "Mod+O", run: () => void openViaDialog() });
+  registerCommand({ id: "file.save", title: "Save", keybinding: "Mod+S", run: () => void save() });
+  registerCommand({ id: "file.rename", title: "Rename…", enabled: hasPath, run: () => void rename() });
+  registerCommand({ id: "file.delete", title: "Delete", enabled: hasPath, run: () => void del() });
+  registerCommand({ id: "file.copyPath", title: "Copy Path", enabled: hasPath, run: () => void copyPath() });
+  registerCommand({
+    id: "file.openLocation",
+    title: "Open File Location",
+    enabled: hasPath,
+    run: () => (fileState.path ? void revealItemInDir(fileState.path) : undefined),
+  });
+  registerCommand({ id: "file.quit", title: "Quit", keybinding: "Mod+Q", run: () => void quit() });
+
+  registerCommand({ id: "edit.undo", title: "Undo", accelerator: "Mod+Z", run: () => { if (view) undo(view); } });
+  registerCommand({ id: "edit.redo", title: "Redo", accelerator: "Mod+Y", run: () => { if (view) redo(view); } });
+  registerCommand({ id: "edit.cut", title: "Cut", accelerator: "Mod+X", run: () => clipboard("cut") });
+  registerCommand({ id: "edit.copy", title: "Copy", accelerator: "Mod+C", run: () => clipboard("copy") });
+  registerCommand({ id: "edit.copyHtml", title: "Copy HTML", run: () => void copyHtml() });
+  registerCommand({ id: "edit.paste", title: "Paste", accelerator: "Mod+V", run: () => void pasteText() });
+  registerCommand({ id: "edit.find", title: "Find…", accelerator: "Mod+F", run: openFind });
+  registerCommand({ id: "edit.replace", title: "Find and Replace…", accelerator: "Mod+Alt+F", run: openFind });
+
+  registerCommand({ id: "settings.themeLight", title: "Light Theme", run: () => void chooseTheme("light") });
+  registerCommand({ id: "settings.themeDark", title: "Dark Theme", run: () => void chooseTheme("dark") });
+
+  registerCommand({
+    id: "view.commandPalette",
+    title: "Command Palette",
+    keybinding: "Mod+P",
+    hidden: true,
+    run: () => { paletteOpen = true; },
+  });
+
+  /** Build a menu item from a registered command, resolving its label,
+   *  accelerator hint, and enabled state; `extra` layers on menu-only bits
+   *  (e.g. a checkmark). */
+  function cmd(id: string, extra: Partial<MenuAction> = {}): MenuAction {
+    const c = getCommand(id);
+    const chord = c?.accelerator ?? c?.keybinding;
+    return {
+      type: "action",
+      id,
+      label: c?.title ?? id,
+      accelerator: chord ? formatChord(chord) : undefined,
+      enabled: c?.enabled ? c.enabled() : true,
+      run: () => void runCommand(id),
+      ...extra,
+    };
+  }
+
+  /** The title-bar menus, sourced from the shared command registry so a command
+   *  is declared once and appears in menu, palette, and keybindings alike. */
   const menus = $derived<Menu[]>([
     {
       id: "file",
       label: "File",
       items: [
-        { type: "action", id: "new", label: "New", accelerator: "Ctrl+N", run: () => openDocument(null) },
-        { type: "action", id: "new_window", label: "New Window", accelerator: "Ctrl+Shift+N", run: () => void newWindow() },
-        { type: "action", id: "open", label: "Open…", accelerator: "Ctrl+O", run: () => void openViaDialog() },
+        cmd("file.new"),
+        cmd("file.newWindow"),
+        cmd("file.open"),
         {
           type: "submenu",
           label: "Open Recent",
@@ -347,76 +413,41 @@
               : [{ type: "action" as const, id: "recent_none", label: "No recent files", enabled: false, run: () => {} }],
         },
         { type: "separator" },
-        { type: "action", id: "save", label: "Save", accelerator: "Ctrl+S", run: () => void save() },
-        { type: "action", id: "rename", label: "Rename…", enabled: hasPath, run: () => void rename() },
-        { type: "action", id: "delete", label: "Delete", enabled: hasPath, run: () => void del() },
+        cmd("file.save"),
+        cmd("file.rename"),
+        cmd("file.delete"),
         { type: "separator" },
-        { type: "action", id: "copy_path", label: "Copy Path", enabled: hasPath, run: () => void copyPath() },
-        {
-          type: "action",
-          id: "open_location",
-          label: "Open File Location",
-          enabled: hasPath,
-          run: () => (fileState.path ? void revealItemInDir(fileState.path) : undefined),
-        },
+        cmd("file.copyPath"),
+        cmd("file.openLocation"),
         { type: "separator" },
-        { type: "action", id: "quit", label: "Quit", accelerator: "Ctrl+Q", run: () => void quit() },
+        cmd("file.quit"),
       ],
     },
     {
       id: "edit",
       label: "Edit",
       items: [
-        { type: "action", id: "undo", label: "Undo", accelerator: "Ctrl+Z", run: () => view && undo(view) },
-        { type: "action", id: "redo", label: "Redo", accelerator: "Ctrl+Y", run: () => view && redo(view) },
+        cmd("edit.undo"),
+        cmd("edit.redo"),
         { type: "separator" },
-        { type: "action", id: "cut", label: "Cut", accelerator: "Ctrl+X", run: () => clipboard("cut") },
-        { type: "action", id: "copy", label: "Copy", accelerator: "Ctrl+C", run: () => clipboard("copy") },
-        { type: "action", id: "copy_html", label: "Copy HTML", run: () => void copyHtml() },
-        { type: "action", id: "paste", label: "Paste", accelerator: "Ctrl+V", run: () => void pasteText() },
+        cmd("edit.cut"),
+        cmd("edit.copy"),
+        cmd("edit.copyHtml"),
+        cmd("edit.paste"),
         { type: "separator" },
-        { type: "action", id: "find", label: "Find…", accelerator: "Ctrl+F", run: openFind },
-        { type: "action", id: "replace", label: "Find and Replace…", accelerator: "Ctrl+Alt+F", run: openFind },
+        cmd("edit.find"),
+        cmd("edit.replace"),
       ],
     },
     {
       id: "settings",
       label: "Settings",
       items: [
-        { type: "action", id: "theme_light", label: "Light Theme", checked: themePref === "light", run: () => void chooseTheme("light") },
-        { type: "action", id: "theme_dark", label: "Dark Theme", checked: themePref === "dark", run: () => void chooseTheme("dark") },
+        cmd("settings.themeLight", { checked: themePref === "light" }),
+        cmd("settings.themeDark", { checked: themePref === "dark" }),
       ],
     },
   ]);
-
-  /** App-level accelerators that the retired native menu used to own. Editor
-   *  shortcuts (undo/redo, find, clipboard) stay with CodeMirror's own keymaps;
-   *  these are the window/document ones that have no editor binding. */
-  function onKeydown(e: KeyboardEvent) {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-    const key = e.key.toLowerCase();
-    if (e.shiftKey) {
-      if (key === "n") {
-        e.preventDefault();
-        void newWindow();
-      }
-      return;
-    }
-    switch (key) {
-      case "n":
-        e.preventDefault();
-        return void openDocument(null);
-      case "o":
-        e.preventDefault();
-        return void openViaDialog();
-      case "s":
-        e.preventDefault();
-        return void save();
-      case "q":
-        e.preventDefault();
-        return void quit();
-    }
-  }
 
   /** Decide what to open on launch: the CLI file if one was passed, otherwise
    *  an untitled buffer. */
@@ -504,11 +535,15 @@
   });
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={(e) => dispatchKey(e)} />
 
 <Titlebar {menus} onmenuopen={(id) => id === "file" && refreshRecent()} />
 <main bind:this={host}></main>
 <StatusBar />
+
+{#if paletteOpen}
+  <CommandPalette onclose={() => paletteOpen = false} />
+{/if}
 
 {#if fileState.conflict}
   <ConflictDialog onKeepMine={keepMine} onLoadTheirs={loadTheirs} />
