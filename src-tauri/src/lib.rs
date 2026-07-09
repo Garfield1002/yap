@@ -39,6 +39,7 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             config::set_plugins_enabled,
             menu::new_window,
             plugins::list_plugins,
+            plugins::install_plugin,
             plugins::read_plugin_data,
             plugins::write_plugin_data,
             spell::spell_languages,

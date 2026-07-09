@@ -15,6 +15,10 @@ export interface PluginInfo {
 /** Discover every plugin under `$YAP_HOME/plugins/`. */
 export const listPlugins = () => invoke<PluginInfo[]>("list_plugins");
 
+/** Copy the plugin folder at `source` into `$YAP_HOME/plugins/`; returns its id
+ *  (the folder name). Rejects a source without a valid manifest, or a clobber. */
+export const installPlugin = (source: string) => invoke<string>("install_plugin", { source });
+
 /** Read a plugin's `data.json` as a raw JSON string (`{}` when absent). */
 export const readPluginData = (dir: string) => invoke<string>("read_plugin_data", { dir });
 

@@ -38,7 +38,12 @@
     loadPlugin,
     unloadPlugin,
   } from "./lib/plugins/loader";
-  import { listPlugins, setPluginsEnabled, type PluginInfo } from "./lib/plugins/rpc";
+  import {
+    listPlugins,
+    installPlugin,
+    setPluginsEnabled,
+    type PluginInfo,
+  } from "./lib/plugins/rpc";
   import { pluginMenuItems } from "./lib/plugins/surfaces.svelte";
   import type { MenuItem } from "./lib/ui/menu";
   import Titlebar from "./lib/ui/Titlebar.svelte";
@@ -352,6 +357,25 @@
     reloadEditor();
   }
 
+  /** Pick a plugin folder and copy it into the plugins directory, then enable
+   *  it. The folder must contain a manifest.json. */
+  async function installPluginFromFolder() {
+    const picked = await open({ multiple: false, directory: true, title: "Select a plugin folder" });
+    if (typeof picked !== "string") return;
+    try {
+      const dir = await installPlugin(picked);
+      await refreshPlugins();
+      if (!enabledPlugins.includes(dir)) {
+        enabledPlugins = [...enabledPlugins, dir];
+        await setPluginsEnabled(enabledPlugins);
+        await loadPlugin(dir);
+        reloadEditor();
+      }
+    } catch (error) {
+      fileState.error = `install failed: ${error}`;
+    }
+  }
+
   // Route through the close handler so an unsaved untitled buffer is caught.
   async function quit() {
     await win.close();
@@ -490,8 +514,15 @@
         {
           type: "submenu",
           label: "Plugins",
-          items:
-            discovered.length > 0
+          items: [
+            {
+              type: "action",
+              id: "plugin_install",
+              label: "Install Plugin…",
+              run: () => void installPluginFromFolder(),
+            },
+            { type: "separator" },
+            ...(discovered.length > 0
               ? discovered.map(
                   (p): MenuItem => ({
                     type: "action",
@@ -503,13 +534,14 @@
                 )
               : [
                   {
-                    type: "action",
+                    type: "action" as const,
                     id: "plugins_none",
                     label: "No plugins installed",
                     enabled: false,
                     run: () => {},
                   },
-                ],
+                ]),
+          ],
         },
       ],
     },

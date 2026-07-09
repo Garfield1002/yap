@@ -145,6 +145,46 @@ pub fn read_plugin_data(dir: String) -> Result<String, String> {
     }
 }
 
+fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Install a plugin by copying a folder (the one the user picked) into
+/// `$YAP_HOME/plugins/`. The source must contain a valid `manifest.json`; the
+/// folder's own name becomes the plugin id. Returns that id so the frontend can
+/// enable the freshly installed plugin. Refuses to clobber an existing install.
+#[tauri::command]
+pub fn install_plugin(source: String) -> Result<String, String> {
+    let src = PathBuf::from(&source);
+
+    let manifest = src.join("manifest.json");
+    let text = fs::read_to_string(&manifest)
+        .map_err(|e| format!("no manifest.json in {source}: {e}"))?;
+    serde_json::from_str::<Manifest>(&text).map_err(|e| format!("invalid manifest.json: {e}"))?;
+
+    let name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "cannot determine a folder name to install as".to_owned())?;
+    let dest = plugin_dir(name)?;
+    if dest.exists() {
+        return Err(format!("'{name}' is already installed; disable and remove it first"));
+    }
+
+    copy_dir(&src, &dest).map_err(|e| format!("copying into {}: {e}", dest.display()))?;
+    Ok(name.to_owned())
+}
+
 /// Write a plugin's `data.json`, creating the plugin directory if needed.
 #[tauri::command]
 pub fn write_plugin_data(dir: String, contents: String) -> Result<(), String> {
@@ -218,6 +258,21 @@ mod tests {
         fs::write(p.join("manifest.json"), r#"{ "name": "N", "apiVersion": 1 }"#).unwrap();
 
         assert!(load_one(&p).error.is_some());
+    }
+
+    #[test]
+    fn copy_dir_copies_nested_contents() {
+        let root = tempfile::tempdir().unwrap();
+        let src = make(root.path(), "src");
+        fs::write(src.join("manifest.json"), "{}").unwrap();
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("sub/a.js"), "x").unwrap();
+
+        let dst = root.path().join("dst");
+        copy_dir(&src, &dst).unwrap();
+
+        assert_eq!(fs::read_to_string(dst.join("manifest.json")).unwrap(), "{}");
+        assert_eq!(fs::read_to_string(dst.join("sub/a.js")).unwrap(), "x");
     }
 
     #[test]
