@@ -28,6 +28,10 @@ export const renameFile = (from: string, to: string) => invoke<void>("rename_fil
 
 export const startWatch = (path: string) => invoke<void>("start_watch", { path });
 
+/** Save clipboard image bytes under YAP_HOME/assets; returns the absolute path. */
+export const savePastedImage = (bytes: number[], ext: string) =>
+  invoke<string>("save_pasted_image", { bytes, ext });
+
 export const getConfig = () => invoke<AppConfig>("get_config");
 
 /** Persist the theme override; `null` follows the system. */

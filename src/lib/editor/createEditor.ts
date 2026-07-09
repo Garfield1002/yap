@@ -17,6 +17,7 @@ import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
 import { markdownShortcuts } from "./markdownShortcuts";
+import { imagePaste } from "./imagePaste";
 
 /**
  * Holds the `documentDirectory` facet so it can be reconfigured in place when an
@@ -62,6 +63,7 @@ export function createEditor(opts: EditorOptions): EditorView {
       documentDirCompartment.of(documentDirectory.of(opts.documentDir ?? "")),
       livePreview(),
       linkHandling,
+      imagePaste,
       // Ahead of the default keymap so Mod-b/i/k and Tab win the precedence tie.
       markdownShortcuts,
       yapTheme,

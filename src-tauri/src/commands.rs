@@ -9,6 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tempfile::NamedTempFile;
 
+use crate::config::config_home;
 use crate::watcher::watch_file;
 
 /// Emitted when the file changes on disk. The frontend decides what to do:
@@ -124,6 +125,30 @@ pub fn write_file_atomic(path: String, contents: String) -> Result<f64, String> 
         .map_err(|e| format!("rename onto {}: {e}", target.display()))?;
 
     Ok(mtime_ms(&target))
+}
+
+/// Save clipboard image bytes into `YAP_HOME/assets/` and return the absolute
+/// path to the written file. Pasting the same image twice writes two files --
+/// the millisecond timestamp keeps names unique without hashing the bytes.
+///
+/// `ext` is the intended file extension (e.g. `png`); anything but ASCII
+/// alphanumerics is dropped, and an empty result falls back to `png`, so a
+/// hostile clipboard MIME type can't steer the write outside the assets dir.
+#[tauri::command]
+pub fn save_pasted_image(bytes: Vec<u8>, ext: String) -> Result<String, String> {
+    let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let ext = if ext.is_empty() { "png".to_owned() } else { ext.to_lowercase() };
+
+    let dir = config_home().join("assets");
+    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+
+    let millis = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let path = dir.join(format!("paste-{millis}.{ext}"));
+    fs::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

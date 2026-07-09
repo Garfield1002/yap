@@ -31,6 +31,7 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             commands::delete_file,
             commands::rename_file,
             commands::start_watch,
+            commands::save_pasted_image,
             config::get_config,
             config::set_theme,
             config::record_recent,
