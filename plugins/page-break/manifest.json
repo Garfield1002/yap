@@ -1,0 +1,7 @@
+{
+  "name": "Page Break",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "requires": ["pdf-export"],
+  "entry": "main.js"
+}

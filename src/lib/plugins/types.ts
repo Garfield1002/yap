@@ -8,6 +8,7 @@ import type { Command } from "../commands/registry.svelte";
 import type { PluginBuilder } from "../editor/livePreview/pluginBuilders";
 import type { MarkdownExtension } from "@lezer/markdown";
 import type { Extension } from "@codemirror/state";
+import type { Facet } from "@codemirror/state";
 import type { StatusItem } from "./surfaces.svelte";
 
 export interface YapApi {
@@ -31,7 +32,11 @@ export interface YapApi {
   markdown: { extendGrammar(ext: MarkdownExtension): void };
   /** Contribute a raw CM6 extension (keymap, view plugin, facet), built against
    *  `yap.cm.*`. Takes effect on reload. */
-  editor: { registerExtension(ext: Extension): void };
+  editor: {
+    registerExtension(ext: Extension): void;
+    /** The open document's directory, for resolving document-relative assets. */
+    documentDirectory: Facet<string, string>;
+  };
   /** Add an item to the Plugins menu. */
   menus: { addItem(item: { label: string; run: () => void }): void };
   /** Add an item to the status bar. */
@@ -40,6 +45,17 @@ export interface YapApi {
   settings: {
     get(): Promise<Record<string, unknown>>;
     set(data: Record<string, unknown>): Promise<void>;
+  };
+  /** Render markdown using yap's own clipboard-export renderer, then open the
+   *  native print dialog for the complete rendered document. */
+  export: {
+    markdownToHtml(markdown: string): string;
+    printHtml(html: string, options?: { title?: string; css?: string }): Promise<void>;
+    printMarkdown(
+      markdown: string,
+      documentDir: string,
+      options?: { title?: string; css?: string; renderLine?: (line: string) => string | undefined },
+    ): Promise<void>;
   };
   /** Narrow, named escape hatches for system access. Generic ones (fetch, file
    *  IO) plus named, task-specific commands (spell check) exposed to the plugins

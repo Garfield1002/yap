@@ -15,7 +15,14 @@ function escapeHtml(text: string): string {
 const CODE_SENTINEL = String.fromCharCode(0);
 
 /** Inline spans: code, images, links, emphasis, strikethrough. */
-function inline(raw: string): string {
+export interface MarkdownHtmlOptions {
+  resolveImageSrc?: (src: string) => string;
+  renderMath?: (tex: string, displayMode: boolean) => string;
+  /** Let a caller turn a complete source line into an HTML block. */
+  renderLine?: (line: string) => string | undefined;
+}
+
+function inline(raw: string, options: MarkdownHtmlOptions): string {
   let text = escapeHtml(raw);
 
   // Pull code spans out first so their contents dodge the other rules.
@@ -29,7 +36,7 @@ function inline(raw: string): string {
     // Images before links: both open with a bracket.
     .replace(
       /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
-      (_, alt: string, src: string) => `<img src="${src}" alt="${alt}">`,
+      (_, alt: string, src: string) => `<img src="${options.resolveImageSrc?.(src) ?? src}" alt="${alt}">`,
     )
     .replace(
       /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g,
@@ -40,6 +47,10 @@ function inline(raw: string): string {
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/(^|[^_])_([^_]+)_/g, "$1<em>$2</em>")
     .replace(/~~([^~]+)~~/g, "<del>$1</del>");
+
+  if (options.renderMath) {
+    text = text.replace(/\$([^$\n]+)\$/g, (_, tex: string) => options.renderMath!(tex, false));
+  }
 
   // Restore the code spans, now safely wrapped.
   return text.replace(
@@ -56,7 +67,7 @@ const BLOCKQUOTE = /^>\s?/;
 const UL_ITEM = /^\s*[-*+]\s+(.*)$/;
 const OL_ITEM = /^\s*\d+\.\s+(.*)$/;
 
-export function markdownToHtml(md: string): string {
+export function markdownToHtml(md: string, options: MarkdownHtmlOptions = {}): string {
   const lines = md.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
   let paragraph: string[] = [];
@@ -64,13 +75,36 @@ export function markdownToHtml(md: string): string {
 
   const flushParagraph = () => {
     if (paragraph.length) {
-      out.push(`<p>${inline(paragraph.join(" "))}</p>`);
+      out.push(`<p>${inline(paragraph.join(" "), options)}</p>`);
       paragraph = [];
     }
   };
 
   while (i < lines.length) {
     const line = lines[i];
+
+    const renderedLine = options.renderLine?.(line);
+    if (renderedLine !== undefined) {
+      flushParagraph();
+      out.push(renderedLine);
+      i++;
+      continue;
+    }
+
+    if (options.renderMath && line.trim() === "$$") {
+      flushParagraph();
+      i++;
+      const body: string[] = [];
+      while (i < lines.length && lines[i].trim() !== "$$") body.push(lines[i++]);
+      if (i < lines.length) {
+        out.push(options.renderMath(body.join("\n"), true));
+        i++;
+        continue;
+      }
+      // An unclosed delimiter remains ordinary source, as it does in the editor.
+      paragraph.push(`$$ ${body.join(" ")}`);
+      break;
+    }
 
     const fence = line.match(FENCE);
     if (fence) {
@@ -101,7 +135,7 @@ export function markdownToHtml(md: string): string {
     if (heading) {
       flushParagraph();
       const level = heading[1].length;
-      out.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+      out.push(`<h${level}>${inline(heading[2], options)}</h${level}>`);
       i++;
       continue;
     }
@@ -113,7 +147,7 @@ export function markdownToHtml(md: string): string {
         body.push(lines[i].replace(BLOCKQUOTE, ""));
         i++;
       }
-      out.push(`<blockquote>${markdownToHtml(body.join("\n"))}</blockquote>`);
+      out.push(`<blockquote>${markdownToHtml(body.join("\n"), options)}</blockquote>`);
       continue;
     }
 
@@ -127,7 +161,7 @@ export function markdownToHtml(md: string): string {
         i++;
       }
       const tag = ordered ? "ol" : "ul";
-      out.push(`<${tag}>${items.map((t) => `<li>${inline(t)}</li>`).join("")}</${tag}>`);
+      out.push(`<${tag}>${items.map((t) => `<li>${inline(t, options)}</li>`).join("")}</${tag}>`);
       continue;
     }
 

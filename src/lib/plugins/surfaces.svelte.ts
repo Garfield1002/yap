@@ -36,12 +36,18 @@ function remover<T>(list: T[], item: T): () => void {
 
 /** Add a status-bar item; returns a disposer for per-plugin teardown. */
 export function addStatusItem(item: StatusItem): () => void {
+  // An async plugin activation can be retried by the UI; surfaces are keyed by
+  // their loader-prefixed id, so never render the same contribution twice.
+  const prior = statusItems.findIndex((existing) => existing.id === item.id);
+  if (prior >= 0) statusItems.splice(prior, 1);
   statusItems.push(item);
   return remover(statusItems, item);
 }
 
 /** Add a Plugins-menu item; returns a disposer for per-plugin teardown. */
 export function addPluginMenuItem(item: PluginMenuItem): () => void {
+  const prior = pluginMenuItems.findIndex((existing) => existing.id === item.id);
+  if (prior >= 0) pluginMenuItems.splice(prior, 1);
   pluginMenuItems.push(item);
   return remover(pluginMenuItems, item);
 }

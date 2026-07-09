@@ -26,6 +26,25 @@ describe("markdownToHtml", () => {
     expect(markdownToHtml("![a](p.png)")).toBe('<p><img src="p.png" alt="a"></p>');
   });
 
+  it("uses print renderers for images and inline or display math", () => {
+    const options = {
+      resolveImageSrc: (src: string) => `asset:///${src}`,
+      renderMath: (tex: string, display: boolean) => `<math data-display="${display}">${tex}</math>`,
+    };
+    expect(markdownToHtml("![a](p.png) and $x^2$", options)).toBe(
+      '<p><img src="asset:///p.png" alt="a"> and <math data-display="false">x^2</math></p>',
+    );
+    expect(markdownToHtml("$$\nx^2\n$$", options)).toBe('<math data-display="true">x^2</math>');
+  });
+
+  it("lets an exporter render an otherwise ordinary source line", () => {
+    expect(markdownToHtml("before\n<!--page-break-->\nafter", {
+      renderLine: (line) => (line === "<!--page-break-->" ? "<break>" : undefined),
+    })).toBe(
+      "<p>before</p>\n<break>\n<p>after</p>",
+    );
+  });
+
   it("escapes HTML in prose but not the tags it emits", () => {
     expect(markdownToHtml("a < b & c")).toBe("<p>a &lt; b &amp; c</p>");
   });

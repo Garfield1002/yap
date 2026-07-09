@@ -1,0 +1,27 @@
+/* A4 writing surface. The guide is part of the editor only; it is intentionally
+   not a print rule, so it never appears in the eventual PDF. */
+.cm-editor.yap-pdf-page-mode .cm-scroller {
+  background: var(--bg-subtle, #f6f8fa);
+  padding: 1.5rem 0;
+}
+
+.cm-editor.yap-pdf-page-mode .cm-content {
+  width: 210mm;
+  max-width: calc(100% - 3rem);
+  min-height: 297mm;
+  margin: 0 auto;
+  /* Explicitly win over the normal editor padding: this is the printable
+     top/bottom margin as well as the left/right writing inset. */
+  padding: 20mm !important;
+  box-sizing: border-box;
+  background-color: var(--bg, #fff);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--fg, #000) 16%, transparent);
+  /* Always show the physical A4 boundary, including for a short one-page
+     document. When a page-gap widget is present this lands in its centre. */
+  background-image: radial-gradient(
+    circle at 2px calc(100% - 1px),
+    var(--border, #d8dee4) 1px,
+    transparent 1.25px
+  );
+  background-size: 4px 297mm;
+}

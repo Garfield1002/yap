@@ -15,11 +15,14 @@ import * as cmCommands from "@codemirror/commands";
 import * as cmSearch from "@codemirror/search";
 import * as langMarkdown from "@codemirror/lang-markdown";
 import * as lezerMarkdown from "@lezer/markdown";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { registerCommand } from "../commands/registry.svelte";
 import { registerBuilder } from "../editor/livePreview/pluginBuilders";
 import { registerGrammar } from "../editor/lezer/pluginGrammar";
 import { registerExtension } from "../editor/pluginExtensions";
+import { markdownToHtml } from "../export/markdownToHtml";
+import { documentDirectory } from "../editor/livePreview";
 import {
   addStatusItem,
   addPluginMenuItem,
@@ -49,6 +52,9 @@ interface Loaded {
 }
 
 const loaded = new Map<string, Loaded>();
+/** Loading is async (blob import + plugin activation), so `loaded` alone is not
+ * enough to protect UI registrations from overlapping enable requests. */
+const activating = new Set<string>();
 
 function runDisposers(disposers: (() => void)[]): void {
   // Reverse order, and never let one failing teardown block the rest.
@@ -59,6 +65,76 @@ function runDisposers(disposers: (() => void)[]): void {
       /* a plugin's own teardown threw; nothing more we can do */
     }
   }
+}
+
+/** Print a complete static document in a same-origin frame. CodeMirror only
+ *  mounts the viewport, so printing the live editor would silently omit pages. */
+function printHtml(html: string, options: { title?: string; css?: string } = {}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.title = options.title ?? "Print document";
+    frame.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;";
+    document.body.appendChild(frame);
+
+    const cleanup = () => frame.remove();
+    const printWindow = frame.contentWindow;
+    const printDocument = frame.contentDocument;
+    if (!printWindow || !printDocument) {
+      cleanup();
+      reject(new Error("could not create print document"));
+      return;
+    }
+
+    frame.addEventListener(
+      "load",
+      () => {
+        const images = Array.from(printDocument.images).filter((image) => !image.complete);
+        Promise.all(
+          images.map(
+            (image) =>
+              new Promise<void>((done) => {
+                image.addEventListener("load", () => done(), { once: true });
+                image.addEventListener("error", () => done(), { once: true });
+              }),
+          ),
+        ).then(() => {
+          printWindow.addEventListener("afterprint", cleanup, { once: true });
+          printWindow.print();
+          // Some WebKit print paths do not issue afterprint for a cancelled dialog.
+          window.setTimeout(cleanup, 60_000);
+          resolve();
+        });
+      },
+      { once: true },
+    );
+    printDocument.open();
+    printDocument.write(`<!doctype html><html><head><meta charset="utf-8"><title>${options.title ?? "yap document"}</title><style>${options.css ?? ""}</style></head><body>${html}</body></html>`);
+    printDocument.close();
+  });
+}
+
+/** The PDF path needs the editor's actual math and image behavior, not the
+ * intentionally lightweight clipboard converter alone. */
+async function printMarkdown(
+  markdown: string,
+  dir: string,
+  options: { title?: string; css?: string; renderLine?: (line: string) => string | undefined } = {},
+): Promise<void> {
+  const [{ default: katex }, { default: katexCss }] = await Promise.all([
+    import("katex"),
+    import("katex/dist/katex.min.css?inline"),
+  ]);
+  const remote = /^(https?:|data:|asset:|blob:)/i;
+  const resolveImage = (src: string) => {
+    if (remote.test(src)) return src;
+    return convertFileSrc(src.startsWith("/") ? src : `${dir}/${src}`);
+  };
+  const html = markdownToHtml(markdown, {
+    resolveImageSrc: resolveImage,
+    renderMath: (tex, displayMode) => katex.renderToString(tex, { displayMode, throwOnError: false }),
+    renderLine: options.renderLine,
+  });
+  return printHtml(html, { ...options, css: `${katexCss}\n${options.css ?? ""}` });
 }
 
 /** Build the `yap` object for one plugin. Every registration is pushed onto
@@ -78,7 +154,7 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
     commands: { register: (cmd) => track(registerCommand(cmd)) },
     livePreview: { registerBuilder: (names, builder) => track(registerBuilder(names, builder)) },
     markdown: { extendGrammar: (ext) => track(registerGrammar(ext)) },
-    editor: { registerExtension: (ext) => track(registerExtension(ext)) },
+    editor: { registerExtension: (ext) => track(registerExtension(ext)), documentDirectory },
     menus: {
       addItem: (item) =>
         track(addPluginMenuItem({ id: `${info.dir}:${item.label}`, ...item })),
@@ -90,6 +166,7 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
       get: async () => JSON.parse(await readPluginData(info.dir)) as Record<string, unknown>,
       set: (data) => writePluginData(info.dir, JSON.stringify(data, null, 2)),
     },
+    export: { markdownToHtml, printHtml, printMarkdown },
     system: {
       fetch: (input, init) => fetch(input, init),
       readFile: async (path) => (await readFile(path)).text,
@@ -120,7 +197,8 @@ async function evaluate(info: PluginInfo, yap: YapApi): Promise<void> {
 /** Load a single plugin. Any failure disables just this plugin and records the
  *  error; every registration made before the failure is rolled back. */
 async function activate(info: PluginInfo): Promise<void> {
-  if (loaded.has(info.dir)) return;
+  if (loaded.has(info.dir) || activating.has(info.dir)) return;
+  activating.add(info.dir);
   const disposers: (() => void)[] = [];
   try {
     if (info.error) throw new Error(info.error);
@@ -145,6 +223,8 @@ async function activate(info: PluginInfo): Promise<void> {
       name: info.name || info.dir,
       message: e instanceof Error ? e.message : String(e),
     });
+  } finally {
+    activating.delete(info.dir);
   }
 }
 
