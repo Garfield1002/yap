@@ -9,7 +9,7 @@
   import { getInitialFile, readFile } from "./lib/persistence/api";
   import { Autosave } from "./lib/persistence/autosave";
   import { watchFile } from "./lib/persistence/watcher";
-  import { basename, fileState } from "./lib/persistence/fileStore.svelte";
+  import { basename, dirname, fileState } from "./lib/persistence/fileStore.svelte";
   import StatusBar from "./lib/ui/StatusBar.svelte";
   import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
 
@@ -88,7 +88,7 @@
       text,
     );
 
-    view = createEditor({ parent: host, doc: text, onDocChange });
+    view = createEditor({ parent: host, doc: text, documentDir: dirname(path), onDocChange });
     view.focus();
     refreshTitle();
 

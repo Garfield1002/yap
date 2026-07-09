@@ -12,11 +12,14 @@ import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
 import { yapTheme, yapHighlighting } from "./theme";
-import { livePreview } from "./livePreview";
+import { livePreview, documentDirectory } from "./livePreview";
+import { linkClickHandler } from "./linkHandler";
 
 export interface EditorOptions {
   parent: HTMLElement;
   doc: string;
+  /** Directory of the open file; relative image paths resolve against it. */
+  documentDir?: string;
   /** Called for every transaction that changed the document. */
   onDocChange?: (doc: string) => void;
   /** Extra extensions (live preview, custom keymaps) layered on top. */
@@ -43,7 +46,9 @@ export function createEditor(opts: EditorOptions): EditorView {
       EditorView.lineWrapping,
       yapMarkdown(),
       yapHighlighting,
+      documentDirectory.of(opts.documentDir ?? ""),
       livePreview(),
+      linkClickHandler,
       yapTheme,
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown

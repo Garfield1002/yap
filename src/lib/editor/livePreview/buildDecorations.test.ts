@@ -120,8 +120,10 @@ describe("inline markup", () => {
     const doc = "- see [**bold** link](http://x.dev)\n- other";
     expect(() => snapshot(doc, doc.length)).not.toThrow();
     expect(snapshot(doc, doc.length).filter((s) => s.kind === "hidden")).toEqual([
+      { kind: "hidden", text: "[" },
       { kind: "hidden", text: "**" },
       { kind: "hidden", text: "**" },
+      { kind: "hidden", text: "](http://x.dev)" },
     ]);
   });
 

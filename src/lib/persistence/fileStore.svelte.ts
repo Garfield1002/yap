@@ -14,3 +14,9 @@ export function basename(path: string | null): string {
   if (!path) return "untitled";
   return path.slice(path.lastIndexOf("/") + 1);
 }
+
+/** Directory holding the file, used to resolve relative image paths. */
+export function dirname(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut <= 0 ? "/" : path.slice(0, cut);
+}
