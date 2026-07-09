@@ -1,54 +1,164 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { EditorView } from "@codemirror/view";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { open } from "@tauri-apps/plugin-dialog";
+
   import { createEditor } from "./lib/editor/createEditor";
+  import { getInitialFile, readFile } from "./lib/persistence/api";
+  import { Autosave } from "./lib/persistence/autosave";
+  import { watchFile } from "./lib/persistence/watcher";
+  import { basename, fileState } from "./lib/persistence/fileStore.svelte";
+  import StatusBar from "./lib/ui/StatusBar.svelte";
+  import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
 
   let host: HTMLElement;
   let view: EditorView | undefined;
+  let autosave: Autosave | undefined;
+  let unlistenWatch: UnlistenFn | undefined;
+  let unlistenClose: UnlistenFn | undefined;
 
-  const SAMPLE = `# yap
+  /** Set while we rewrite the buffer from disk, so it is not mistaken for typing. */
+  let applyingExternalChange = false;
 
-A *live-preview* markdown editor with **rich** rendering and \`inline code\`.
+  const win = getCurrentWindow();
 
-Click into any block and its raw markdown appears. ~~Struck through~~ text,
-**bold**, *italic*, and [a link](https://example.com) all live here.
+  function refreshTitle() {
+    void win.setTitle(`${basename(fileState.path)}${fileState.dirty ? " •" : ""}`);
+  }
 
-## Second level
+  /** Replace the buffer with `text` via a change, not a new state: undo history
+   *  and the cursor both survive. */
+  function replaceBuffer(text: string) {
+    if (!view) return;
+    applyingExternalChange = true;
+    try {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    } finally {
+      applyingExternalChange = false;
+    }
+  }
 
-### Third level
+  function onDocChange(text: string) {
+    if (applyingExternalChange || !autosave) return;
+    fileState.dirty = text !== autosave.lastSavedText;
+    fileState.error = null;
+    refreshTitle();
+    autosave.schedule(text);
+  }
 
-Setext heading
-==============
+  async function resolvePath(): Promise<string | null> {
+    const fromCli = await getInitialFile();
+    if (fromCli) return fromCli;
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdx", "txt"] }],
+    });
+    return typeof picked === "string" ? picked : null;
+  }
 
-- a list item with **bold** inside
-- see [**bold** link](https://example.com) nested in a list
-  - a nested item
+  async function boot() {
+    const path = await resolvePath();
+    if (!path) {
+      // Launched bare and the user cancelled the picker: there is nothing to edit.
+      await win.destroy();
+      return;
+    }
 
-> a blockquote
-> spanning two lines
+    fileState.path = path;
+    const { text } = await readFile(path);
 
-\`\`\`rust
-fn main() {
-    println!("hello");
-}
-\`\`\`
+    autosave = new Autosave(
+      {
+        path,
+        delayMs: 5000,
+        onSaveStart: () => (fileState.saving = true),
+        onSaved: (saved) => {
+          fileState.dirty = (view?.state.doc.toString() ?? saved) !== saved;
+          refreshTitle();
+        },
+        onIdle: () => {
+          fileState.saving = false;
+          refreshTitle();
+        },
+        onError: (error) => (fileState.error = `save failed: ${error}`),
+      },
+      text,
+    );
 
-| col a | col b |
-| ----- | ----- |
-| **1** | 2     |
+    view = createEditor({ parent: host, doc: text, onDocChange });
+    view.focus();
+    refreshTitle();
 
-Final paragraph.
-`;
+    unlistenWatch = await watchFile(path, {
+      currentText: () => view?.state.doc.toString() ?? "",
+      lastSavedText: () => autosave?.lastSavedText ?? "",
+      isDirty: () => fileState.dirty,
+      onReload: (diskText) => {
+        replaceBuffer(diskText);
+        autosave?.reset(diskText);
+        fileState.dirty = false;
+        refreshTitle();
+      },
+      onConflict: (diskText) => {
+        autosave?.suspend();
+        fileState.conflictText = diskText;
+        fileState.conflict = true;
+      },
+      onError: (error) => (fileState.error = `reload failed: ${error}`),
+    });
+
+    // The window must not go away before the debounce timer has fired.
+    unlistenClose = await win.onCloseRequested(async (event) => {
+      event.preventDefault();
+      try {
+        await autosave?.flush();
+      } finally {
+        await win.destroy();
+      }
+    });
+  }
+
+  function keepMine() {
+    const text = view?.state.doc.toString() ?? "";
+    fileState.conflict = false;
+    fileState.conflictText = null;
+    autosave?.resume();
+    autosave?.schedule(text);
+    void autosave?.flush();
+    view?.focus();
+  }
+
+  function loadTheirs() {
+    const text = fileState.conflictText ?? "";
+    replaceBuffer(text);
+    autosave?.reset(text);
+    autosave?.resume();
+    fileState.conflict = false;
+    fileState.conflictText = null;
+    fileState.dirty = false;
+    refreshTitle();
+    view?.focus();
+  }
 
   onMount(() => {
-    view = createEditor({ parent: host, doc: SAMPLE });
-    view.focus();
+    void boot().catch((error) => (fileState.error = String(error)));
+    return () => {
+      unlistenWatch?.();
+      unlistenClose?.();
+      view?.destroy();
+    };
   });
-
-  onDestroy(() => view?.destroy());
 </script>
 
 <main bind:this={host}></main>
+<StatusBar />
+
+{#if fileState.conflict}
+  <ConflictDialog onKeepMine={keepMine} onLoadTheirs={loadTheirs} />
+{/if}
 
 <style>
   main {
