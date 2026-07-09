@@ -11,7 +11,6 @@
   import { documentDirectory } from "./lib/editor/livePreview";
   import {
     getInitialFile,
-    getStartUntitled,
     readFile,
     writeFileAtomic,
     deleteFile,
@@ -314,19 +313,18 @@
     }
   }
 
-  /** Decide what to open on launch: the CLI file, an untitled buffer (`--new`),
-   *  or the open dialog when launched bare. */
+  /** Decide what to open on launch: the CLI file if one was passed, otherwise
+   *  an untitled buffer. */
   async function boot() {
     await initTheme();
 
     const fromCli = await getInitialFile();
     if (fromCli) {
       await openDocument(fromCli);
-    } else if (await getStartUntitled()) {
-      await openDocument(null);
     } else {
-      const picked = await open({ multiple: false, directory: false, filters: MD_FILTERS });
-      await openDocument(typeof picked === "string" ? picked : null);
+      // Launched bare (or with --new): start with an untitled buffer rather
+      // than forcing the open dialog on the user.
+      await openDocument(null);
     }
 
     // The window must not go away before the debounce timer has fired, and an
