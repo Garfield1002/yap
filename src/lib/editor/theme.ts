@@ -40,6 +40,83 @@ export const yapTheme = EditorView.theme({
   "&:not(.cm-focused) .cm-selectionBackground": {
     backgroundColor: "var(--selection-blur)",
   },
+
+  // Search / replace panel.
+  ".cm-panels": {
+    backgroundColor: "var(--bg)",
+    color: "var(--fg)",
+  },
+  ".cm-panels.cm-panels-top": {
+    borderBottom: "1px solid var(--border, var(--fg-faint))",
+  },
+  ".cm-panel.cm-search": {
+    fontFamily: "var(--font-prose)",
+    padding: "6px 8px",
+  },
+  ".cm-panel.cm-search label": {
+    fontSize: "0.85em",
+    color: "var(--fg-dim)",
+  },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button": {
+    fontFamily: "inherit",
+  },
+  ".cm-panel.cm-search input[type=text]": {
+    backgroundColor: "var(--bg)",
+    color: "var(--fg)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    padding: "2px 6px",
+  },
+  ".cm-panel.cm-search button": {
+    backgroundColor: "transparent",
+    backgroundImage: "none",
+    color: "var(--fg)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    padding: "2px 8px",
+  },
+  ".cm-panel.cm-search button:hover": {
+    backgroundColor: "var(--selection-blur)",
+  },
+  ".cm-panel.cm-search [name=close]": {
+    color: "var(--fg-dim)",
+  },
+  // Native checkboxes render nearly invisibly on the light panel, so draw our
+  // own box with an explicit border and accent-colored check.
+  ".cm-panel.cm-search input[type=checkbox]": {
+    appearance: "none",
+    WebkitAppearance: "none",
+    width: "13px",
+    height: "13px",
+    margin: "0 4px 0 0",
+    border: "1px solid var(--fg-faint)",
+    borderRadius: "3px",
+    backgroundColor: "var(--bg)",
+    position: "relative",
+    verticalAlign: "middle",
+    cursor: "pointer",
+  },
+  ".cm-panel.cm-search input[type=checkbox]:checked": {
+    backgroundColor: "var(--accent)",
+    borderColor: "var(--accent)",
+  },
+  ".cm-panel.cm-search input[type=checkbox]:checked::after": {
+    content: '""',
+    position: "absolute",
+    left: "3.5px",
+    top: "0.5px",
+    width: "3px",
+    height: "7px",
+    border: "solid var(--bg)",
+    borderWidth: "0 2px 2px 0",
+    transform: "rotate(45deg)",
+  },
+  ".cm-searchMatch": {
+    backgroundColor: "var(--selection-blur)",
+  },
+  ".cm-searchMatch.cm-searchMatch-selected": {
+    backgroundColor: "var(--selection)",
+  },
 });
 
 /**

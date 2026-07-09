@@ -88,6 +88,13 @@ fn edit_submenu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
         .copy()
         .item(&MenuItemBuilder::with_id("copy_html", "Copy HTML").build(app)?)
         .paste()
+        .separator()
+        .item(&MenuItemBuilder::with_id("find", "Find…").accelerator("CmdOrCtrl+F").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("replace", "Find and Replace…")
+                .accelerator("CmdOrCtrl+Alt+F")
+                .build(app)?,
+        )
         .build()
 }
 

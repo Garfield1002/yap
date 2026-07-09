@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { undo, redo } from "@codemirror/commands";
+  import { openSearchPanel } from "@codemirror/search";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open, save as saveDialog, ask } from "@tauri-apps/plugin-dialog";
@@ -296,6 +297,13 @@
         return copyPath();
       case "open_location":
         return fileState.path ? revealItemInDir(fileState.path) : undefined;
+      case "find":
+      case "replace":
+        if (view) {
+          openSearchPanel(view);
+          view.focus();
+        }
+        return;
       case "undo":
         if (view) undo(view);
         return;

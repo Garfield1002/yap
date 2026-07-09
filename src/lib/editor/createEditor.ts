@@ -9,6 +9,7 @@ import {
   highlightSpecialChars,
 } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
+import { search, searchKeymap } from "@codemirror/search";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
 import { yapLezerExtensions } from "./lezer";
@@ -51,6 +52,9 @@ export function createEditor(opts: EditorOptions): EditorView {
       highlightSpecialChars(),
       indentOnInput(),
       bracketMatching(),
+      // Search/replace panel (Mod-f / Mod-Alt-f) with regex, match-case and
+      // whole-word toggles built in.
+      search({ top: true }),
       EditorState.allowMultipleSelections.of(true),
       EditorView.lineWrapping,
       yapMarkdown(yapLezerExtensions),
@@ -64,7 +68,7 @@ export function createEditor(opts: EditorOptions): EditorView {
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown
       // keymap (Enter/Backspace) is installed by `yapMarkdown` above.
-      keymap.of([...historyKeymap, ...defaultKeymap]),
+      keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap]),
       listener,
     ],
   });
