@@ -46,7 +46,13 @@ export const LEAF_BLOCKS = new Set([
   "Comment",
 ]);
 
-function blockFromNode(node: SyntaxNode | null): Region | null {
+interface BlockHit {
+  region: Region;
+  /** A multi-line container (code/math/quote/…) as opposed to a leaf block. */
+  container: boolean;
+}
+
+function blockFromNode(node: SyntaxNode | null): BlockHit | null {
   let highestContainer: SyntaxNode | null = null;
   let nearestLeaf: SyntaxNode | null = null;
 
@@ -56,7 +62,8 @@ function blockFromNode(node: SyntaxNode | null): Region | null {
   }
 
   const hit = highestContainer ?? nearestLeaf;
-  return hit ? { from: hit.from, to: hit.to } : null;
+  if (!hit) return null;
+  return { region: { from: hit.from, to: hit.to }, container: hit === highestContainer };
 }
 
 /**
@@ -66,11 +73,20 @@ function blockFromNode(node: SyntaxNode | null): Region | null {
  * Resolution is tried from both sides: at a block's last position only the
  * `-1` side lands inside it, and at its first position only `+1` does. When
  * `pos` is strictly interior both agree.
+ *
+ * A block *container* on either side wins over a leaf on the other. A caret at
+ * the top edge of a block-math (or code) block otherwise resolves to the
+ * paragraph above -- and since block math renders as a widget with no interior
+ * cursor stop, an arrow key can only ever land the caret on that edge. Without
+ * this, moving onto the block would reveal the neighbour instead of the block.
  */
 export function blockAt(tree: Tree, pos: number): Region | null {
-  return (
-    blockFromNode(tree.resolveInner(pos, -1)) ?? blockFromNode(tree.resolveInner(pos, 1))
-  );
+  const minus = blockFromNode(tree.resolveInner(pos, -1));
+  const plus = blockFromNode(tree.resolveInner(pos, 1));
+
+  if (minus?.container) return minus.region;
+  if (plus?.container) return plus.region;
+  return (minus ?? plus)?.region ?? null;
 }
 
 /**

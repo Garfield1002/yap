@@ -18,6 +18,7 @@ import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
 import { markdownShortcuts } from "./markdownShortcuts";
 import { imagePaste } from "./imagePaste";
+import { blockNavigation } from "./blockNavigation";
 
 /**
  * Holds the `documentDirectory` facet so it can be reconfigured in place when an
@@ -66,6 +67,11 @@ export function createEditor(opts: EditorOptions): EditorView {
       imagePaste,
       // Ahead of the default keymap so Mod-b/i/k and Tab win the precedence tie.
       markdownShortcuts,
+      // Arrow keys step *into* a rendered block-math widget rather than past it.
+      blockNavigation,
+      // Escape blurs the editor; a blurred editor renders every block as a clean
+      // preview (see the focus watcher in livePreview).
+      keymap.of([{ key: "Escape", run: (view) => (view.contentDOM.blur(), true) }]),
       yapTheme,
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown

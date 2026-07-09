@@ -44,12 +44,19 @@ export class Builder {
     this.atomicRanges.push(HIDDEN.range(from, to));
   }
 
-  /** Swap a whole node for a rendered widget. No-op while raw. */
-  replace(from: number, to: number, widget: WidgetType, block = false): void {
+  /**
+   * Swap a whole node for a rendered widget. No-op while raw.
+   *
+   * `atomic` (the default) makes the cursor skip the widget, which is right for
+   * an inline atom like a rendered image or inline formula. A block that should
+   * behave like fenced code -- where an arrow key lands *on* the block and
+   * reveals its source rather than jumping past it -- passes `atomic: false`.
+   */
+  replace(from: number, to: number, widget: WidgetType, block = false, atomic = true): void {
     if (from > to || this.isRaw(from, to)) return;
     const deco = Decoration.replace({ widget, block });
     this.ranges.push(deco.range(from, to));
-    this.atomicRanges.push(deco.range(from, to));
+    if (atomic) this.atomicRanges.push(deco.range(from, to));
   }
 
   /** Style a span. Always applied, raw or not. */

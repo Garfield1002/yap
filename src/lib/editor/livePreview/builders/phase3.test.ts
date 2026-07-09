@@ -169,9 +169,9 @@ describe("code blocks", () => {
     const doc = "para\n\n```rust\nlet x = 1;\n```";
     const found = classes(doc, 0); // cursor outside the block
     // Only the single body line carries the slab, with both rounded corners.
-    expect(found.filter((c) => c.startsWith("cm-code-line")).length).toBe(1);
-    expect(found).toContain("cm-code-first:");
-    expect(found).toContain("cm-code-last:");
+    expect(found.filter((c) => c.startsWith("cm-block-line")).length).toBe(1);
+    expect(found).toContain("cm-block-first:");
+    expect(found).toContain("cm-block-last:");
     // The ``` and info string are gone, not merely dimmed.
     expect(found.some((c) => c.startsWith("cm-md-mark"))).toBe(false);
     // Each fence is hidden together with the newline that precedes it, so the
@@ -182,7 +182,7 @@ describe("code blocks", () => {
   it("reveals and dims the fences while the block is edited", () => {
     const doc = "para\n\n```rust\nlet x = 1;\n```";
     const found = classes(doc, 16); // cursor on the body line
-    expect(found.filter((c) => c.startsWith("cm-code-line")).length).toBe(3);
+    expect(found.filter((c) => c.startsWith("cm-block-line")).length).toBe(3);
     expect(found).toContain("cm-md-mark:```");
     expect(found).toContain("cm-md-mark:rust");
     expect(hidden(doc, 16)).toEqual([]);
@@ -195,7 +195,7 @@ describe("code blocks", () => {
 
   it("styles an indented code block too", () => {
     const doc = "para\n\n    indented\n";
-    expect(classes(doc, 0)).toContain("cm-code-line:");
+    expect(classes(doc, 0)).toContain("cm-block-line:");
   });
 });
 

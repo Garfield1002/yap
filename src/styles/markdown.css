@@ -54,8 +54,10 @@
   cursor: pointer;
   text-decoration-color: var(--accent);
 }
-/* Fenced and indented code: one slab, monospace, fences dimmed not hidden. */
-.cm-editor .cm-content .cm-code-line {
+/* The shared block slab: fenced/indented code and block-math source both sit in
+   this monospace box, with their delimiters dimmed (via .cm-md-mark) not hidden.
+   See builders/block.ts. */
+.cm-editor .cm-content .cm-block-line {
   font-family: var(--font-mono);
   font-size: 0.88em;
   background: var(--code-bg);
@@ -64,12 +66,12 @@
   padding-left: 0.75em;
   padding-right: 0.75em;
 }
-.cm-editor .cm-content .cm-code-first {
+.cm-editor .cm-content .cm-block-first {
   border-top: 1px solid var(--code-border);
   border-radius: 6px 6px 0 0;
   padding-top: 0.35em;
 }
-.cm-editor .cm-content .cm-code-last {
+.cm-editor .cm-content .cm-block-last {
   border-bottom: 1px solid var(--code-border);
   border-radius: 0 0 6px 6px;
   padding-bottom: 0.35em;
@@ -150,27 +152,6 @@
 /* A half-typed formula: KaTeX renders the message in this colour. */
 .cm-math .katex-error {
   color: var(--danger);
-}
-
-/* Raw block-math source while editing: the fenced-code slab, monospace. */
-.cm-editor .cm-content .cm-math-line {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background: var(--code-bg);
-  border-left: 1px solid var(--code-border);
-  border-right: 1px solid var(--code-border);
-  padding-left: 0.75em;
-  padding-right: 0.75em;
-}
-.cm-editor .cm-content .cm-math-first {
-  border-top: 1px solid var(--code-border);
-  border-radius: 6px 6px 0 0;
-  padding-top: 0.35em;
-}
-.cm-editor .cm-content .cm-math-last {
-  border-bottom: 1px solid var(--code-border);
-  border-radius: 0 0 6px 6px;
-  padding-bottom: 0.35em;
 }
 
 /* Footnotes. A reference is a small superscript label; a definition line is

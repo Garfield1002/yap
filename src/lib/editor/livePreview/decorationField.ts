@@ -15,14 +15,20 @@ import {
 /** Ask the field to rebuild even though the doc and selection are unchanged. */
 export const refreshDecorations = StateEffect.define<null>();
 
+/** Set editor focus. Blurred, every block renders -- nothing shows raw source,
+ *  so pressing Escape (which blurs) turns the document into a clean preview. */
+export const setFocused = StateEffect.define<boolean>();
+
 interface PreviewState extends Decorations {
   /** The blocks currently shown as raw source. */
   pinned: Region[];
+  /** Whether the editor is focused; blurred pins nothing. */
+  focused: boolean;
 }
 
-function rebuild(state: EditorState): PreviewState {
-  const pinned = activeRegions(state);
-  return { ...buildDecorations(state, pinned), pinned };
+function rebuild(state: EditorState, focused: boolean): PreviewState {
+  const pinned = focused ? activeRegions(state) : [];
+  return { ...buildDecorations(state, pinned), pinned, focused };
 }
 
 /**
@@ -40,8 +46,18 @@ function rebuild(state: EditorState): PreviewState {
  * document is rebuilt from the real tree, broken fence and all.
  */
 function updatePreview(value: PreviewState, tr: Transaction): PreviewState {
-  const forced = tr.reconfigured || tr.effects.some((e) => e.is(refreshDecorations));
-  if (forced) return rebuild(tr.state);
+  let focused = value.focused;
+  let focusChanged = false;
+  for (const e of tr.effects) {
+    if (e.is(setFocused)) {
+      focused = e.value;
+      focusChanged = true;
+    }
+  }
+
+  const forced =
+    tr.reconfigured || focusChanged || tr.effects.some((e) => e.is(refreshDecorations));
+  if (forced) return rebuild(tr.state, focused);
   if (!tr.docChanged && !tr.selection) return value;
 
   const mapped = mapRegions(value.pinned, tr.changes);
@@ -53,7 +69,7 @@ function updatePreview(value: PreviewState, tr: Transaction): PreviewState {
     changesStayInside(value.pinned, tr.changes) &&
     selectionStaysInside(mapped, tr.state.selection);
 
-  if (!stillPinned) return rebuild(tr.state);
+  if (!stillPinned) return rebuild(tr.state, focused);
   if (!tr.docChanged) return { ...value, pinned: mapped };
 
   // Inside the pinned block, trust the new tree: the block is raw, so this only
@@ -63,6 +79,7 @@ function updatePreview(value: PreviewState, tr: Transaction): PreviewState {
   const previousAtomic = value.atomic.map(tr.changes);
 
   return {
+    focused,
     pinned: mapped,
     deco: Decoration.set([...outside(previous, mapped), ...inside(fresh.deco, mapped)], true),
     // A pinned block emits no replaces, so nothing of the fresh atomic set is
@@ -80,7 +97,9 @@ function updatePreview(value: PreviewState, tr: Transaction): PreviewState {
  * height estimates and makes scrolling jump.
  */
 export const livePreviewField = StateField.define<PreviewState>({
-  create: rebuild,
+  // Assume focused: the editor is focused right after it mounts, and the first
+  // focus event would only re-confirm it.
+  create: (state) => rebuild(state, true),
   update: updatePreview,
 
   provide: (field) => [
@@ -126,4 +145,26 @@ const parseTailWatcher = ViewPlugin.fromClass(
   },
 );
 
-export const livePreview = () => [livePreviewField, parseTailWatcher];
+/** Mirror DOM focus into the field so a blurred editor renders every block. */
+const focusWatcher = EditorView.domEventHandlers({
+  focus: (_event, view) => {
+    setFocus(view, true);
+    return false;
+  },
+  blur: (_event, view) => {
+    setFocus(view, false);
+    return false;
+  },
+});
+
+/** A blur can fire while the view is being torn down (document switch); a
+ *  dispatch then throws, so swallow it -- the field is about to vanish anyway. */
+function setFocus(view: EditorView, focused: boolean): void {
+  try {
+    view.dispatch({ effects: setFocused.of(focused) });
+  } catch {
+    /* view already destroyed */
+  }
+}
+
+export const livePreview = () => [livePreviewField, parseTailWatcher, focusWatcher];

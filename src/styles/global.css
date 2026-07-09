@@ -101,6 +101,20 @@ body {
   font-family: var(--font-prose);
 }
 
+/* The chrome -- title bar, status bar, dialogs -- is not a document: dragging
+   across it should never select its labels. Selection is re-enabled only where
+   it means something, the editor content and any text field. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.cm-content,
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 #app {
   height: 100%;
   display: flex;

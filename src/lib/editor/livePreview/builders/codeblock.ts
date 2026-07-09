@@ -1,8 +1,10 @@
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { Builder } from "../builder";
+import { slabLines, dimMarks } from "./block";
 
 /**
- * Gives fenced and indented code blocks a monospace, tinted slab.
+ * Gives fenced and indented code blocks a monospace, tinted slab -- the same
+ * `cm-block-*` slab block math uses (see `block.ts`).
  *
  * A rendered fence collapses its ``` lines entirely -- newline included -- so
  * the slab shows only the code, the way block math drops its `$$`. The
@@ -29,15 +31,7 @@ export function codeblock(node: SyntaxNodeRef, b: Builder): boolean | void {
   const raw = b.isRaw(node.from, node.to);
   const hideFences = node.name === "FencedCode" && !raw && lastLine - firstLine >= 2;
 
-  const slabFirst = hideFences ? firstLine + 1 : firstLine;
-  const slabLast = hideFences ? lastLine - 1 : lastLine;
-
-  for (let n = slabFirst; n <= slabLast; n++) {
-    const line = doc.line(n);
-    b.line(line.from, "cm-code-line");
-    if (n === slabFirst) b.line(line.from, "cm-code-first");
-    if (n === slabLast) b.line(line.from, "cm-code-last");
-  }
+  slabLines(b, hideFences ? firstLine + 1 : firstLine, hideFences ? lastLine - 1 : lastLine);
 
   if (node.name !== "FencedCode") return;
 
@@ -57,9 +51,7 @@ export function codeblock(node: SyntaxNodeRef, b: Builder): boolean | void {
   }
 
   // Raw, or nothing to collapse: keep the fences visible but dimmed.
-  for (const mark of node.node.getChildren("CodeMark")) {
-    b.mark(mark.from, mark.to, "cm-md-mark");
-  }
+  dimMarks(b, node.node, "CodeMark");
   const info = node.node.getChild("CodeInfo");
   if (info) b.mark(info.from, info.to, "cm-md-mark");
 }
