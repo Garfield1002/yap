@@ -41,11 +41,19 @@ export interface YapApi {
     get(): Promise<Record<string, unknown>>;
     set(data: Record<string, unknown>): Promise<void>;
   };
-  /** Narrow, named escape hatches for system access. */
+  /** Narrow, named escape hatches for system access. Generic ones (fetch, file
+   *  IO) plus named, task-specific commands (spell check) exposed to the plugins
+   *  that need them, rather than a blanket `shell(anything)`. */
   system: {
     fetch: typeof fetch;
     readFile(path: string): Promise<string>;
     writeFile(path: string, contents: string): Promise<void>;
+    /** Installed spell-check dictionary languages. */
+    spellLanguages(): Promise<string[]>;
+    /** The subset of `words` misspelled in `lang`. */
+    spellCheck(words: string[], lang: string): Promise<string[]>;
+    /** Suggested corrections for a single `word`. */
+    spellSuggest(word: string, lang: string): Promise<string[]>;
   };
 }
 

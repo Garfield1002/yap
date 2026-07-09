@@ -23,3 +23,13 @@ export const writePluginData = (dir: string, contents: string) =>
 
 export const setPluginsEnabled = (enabled: string[]) =>
   invoke<void>("set_plugins_enabled", { enabled });
+
+/** Installed spell-check dictionary languages, e.g. ["en_GB", "en_US"]. */
+export const spellLanguages = () => invoke<string[]>("spell_languages");
+
+/** The subset of `words` that are misspelled in `lang`. */
+export const spellCheck = (words: string[], lang: string) =>
+  invoke<string[]>("spell_check", { words, lang });
+
+export const spellSuggest = (word: string, lang: string) =>
+  invoke<string[]>("spell_suggest", { word, lang });

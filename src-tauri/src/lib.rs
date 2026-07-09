@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod menu;
 mod plugins;
+mod spell;
 mod watcher;
 
 use std::path::PathBuf;
@@ -40,6 +41,9 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             plugins::list_plugins,
             plugins::read_plugin_data,
             plugins::write_plugin_data,
+            spell::spell_languages,
+            spell::spell_check,
+            spell::spell_suggest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

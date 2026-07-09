@@ -27,7 +27,15 @@ import {
   pluginErrors,
 } from "./surfaces.svelte";
 import { readFile, writeFileAtomic } from "../persistence/api";
-import { listPlugins, readPluginData, writePluginData, type PluginInfo } from "./rpc";
+import {
+  listPlugins,
+  readPluginData,
+  writePluginData,
+  spellLanguages,
+  spellCheck,
+  spellSuggest,
+  type PluginInfo,
+} from "./rpc";
 import type { YapApi, PluginModule } from "./types";
 
 /** The API contract version. A plugin whose manifest names a different one is
@@ -88,6 +96,9 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
       writeFile: async (path, contents) => {
         await writeFileAtomic(path, contents);
       },
+      spellLanguages,
+      spellCheck,
+      spellSuggest,
     },
   };
 }
