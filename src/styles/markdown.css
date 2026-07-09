@@ -96,11 +96,35 @@
   font-size: 0.85em;
 }
 
+/* Custom-drawn so the box is clearly visible in both themes -- a native
+   checkbox nearly disappears against the light background. */
 .cm-task-checkbox {
-  margin: 0 0.35em 0 0;
-  vertical-align: -0.1em;
-  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.4em 0 0;
+  vertical-align: -0.16em;
+  border: 1.5px solid var(--fg-dim);
+  border-radius: 3px;
+  background: var(--bg);
   cursor: pointer;
+  position: relative;
+}
+.cm-task-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.cm-task-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.32em;
+  top: 0.12em;
+  width: 0.26em;
+  height: 0.52em;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .cm-editor .cm-content .cm-task-done {
   color: var(--fg-dim);

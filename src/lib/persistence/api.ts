@@ -35,5 +35,7 @@ export const setThemeSetting = (theme: string | null) => invoke<void>("set_theme
 
 export const recordRecent = (path: string) => invoke<void>("record_recent", { path });
 
-/** Rebuild the native menu (Open Recent, enabled state, theme ticks). */
-export const refreshMenu = (hasPath: boolean) => invoke<void>("refresh_menu", { hasPath });
+/** Pop up a native submenu ("file" | "edit" | "settings") under its title-bar
+ *  button. `hasPath` gates the File items that only apply to a saved file. */
+export const popupMenu = (which: "file" | "edit" | "settings", hasPath: boolean) =>
+  invoke<void>("popup_menu", { which, hasPath });

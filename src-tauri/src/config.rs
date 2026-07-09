@@ -92,8 +92,8 @@ pub fn set_theme(theme: Option<String>) -> Result<(), String> {
     save(&config)
 }
 
-/// Remember `path` as the most recently opened file. The frontend calls this
-/// and then `refresh_menu`, so the Open Recent submenu picks it up.
+/// Remember `path` as the most recently opened file. The next File-menu popup
+/// rebuilds Open Recent from the config, so it picks this up automatically.
 #[tauri::command]
 pub fn record_recent(path: String) -> Result<(), String> {
     let mut config = load();

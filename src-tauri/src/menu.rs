@@ -1,21 +1,22 @@
-//! The native window menu: File, Edit, Settings.
+//! The window menus: File, Edit, Settings.
 //!
-//! Most items just forward their id to the frontend as a `menu-action` event --
-//! the frontend owns the editor view, the current path, and the dialogs, so it
-//! is the natural place to act. The exceptions are handled here: `new_window`
-//! spawns a second process, and the clipboard's Cut/Copy/Paste are Tauri's
-//! predefined items (CodeMirror fills the clipboard with document source on the
-//! native copy event, so these do the right thing without a round trip).
+//! There is no persistent menu bar. The frontend draws its own themed title bar
+//! with File / Edit / Settings buttons and calls `popup_menu` to drop the native
+//! submenu under the button that was clicked. Each popup is rebuilt from the
+//! current config, so Open Recent, the path-only items' enabled state, and the
+//! theme tick are always current.
 //!
-//! The menu is rebuilt from scratch whenever the open document changes, which
-//! is how the Open Recent submenu, and the enabled state of the path-only items,
-//! stay current.
+//! Most items forward their id to the frontend as a `menu-action` event -- the
+//! frontend owns the editor, the path, and the dialogs. The exceptions:
+//! `new_window` spawns a second process, and Cut/Copy/Paste are Tauri predefined
+//! items (CodeMirror fills the clipboard with document source on the native copy
+//! event, so a hidden-markup selection still copies correct markdown).
 
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::menu::{CheckMenuItemBuilder, ContextMenu, MenuItemBuilder, Submenu, SubmenuBuilder};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::config;
 
@@ -35,30 +36,24 @@ fn basename(path: &str) -> String {
         .unwrap_or_else(|| path.to_owned())
 }
 
-/// Build the whole menu. `has_path` gates the items that only make sense once
-/// the buffer is backed by a file (Rename, Delete, Copy Path, Open Location).
-pub fn build_menu<R: Runtime>(app: &AppHandle<R>, has_path: bool) -> tauri::Result<Menu<R>> {
+fn file_submenu<R: Runtime>(app: &AppHandle<R>, has_path: bool) -> tauri::Result<Submenu<R>> {
     let cfg = config::load();
 
     // Open Recent, filtered to files that still exist.
     let mut recent = SubmenuBuilder::new(app, "Open Recent");
     let live: Vec<&String> = cfg.recent.iter().filter(|p| Path::new(p).exists()).collect();
     if live.is_empty() {
-        recent = recent.item(
-            &MenuItemBuilder::with_id("recent_none", "No recent files")
-                .enabled(false)
-                .build(app)?,
-        );
+        recent = recent
+            .item(&MenuItemBuilder::with_id("recent_none", "No recent files").enabled(false).build(app)?);
     } else {
         for path in live {
-            recent = recent.item(
-                &MenuItemBuilder::with_id(format!("recent:{path}"), basename(path)).build(app)?,
-            );
+            recent = recent
+                .item(&MenuItemBuilder::with_id(format!("recent:{path}"), basename(path)).build(app)?);
         }
     }
     let recent = recent.build()?;
 
-    let file = SubmenuBuilder::new(app, "File")
+    SubmenuBuilder::new(app, "File")
         .item(&MenuItemBuilder::with_id("new", "New").accelerator("CmdOrCtrl+N").build(app)?)
         .item(
             &MenuItemBuilder::with_id("new_window", "New Window")
@@ -80,9 +75,11 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, has_path: bool) -> tauri::Resu
         )
         .separator()
         .item(&MenuItemBuilder::with_id("quit", "Quit").accelerator("CmdOrCtrl+Q").build(app)?)
-        .build()?;
+        .build()
+}
 
-    let edit = SubmenuBuilder::new(app, "Edit")
+fn edit_submenu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    SubmenuBuilder::new(app, "Edit")
         // Undo/Redo route to the editor's own history, not the webview's.
         .item(&MenuItemBuilder::with_id("undo", "Undo").build(app)?)
         .item(&MenuItemBuilder::with_id("redo", "Redo").build(app)?)
@@ -91,11 +88,12 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, has_path: bool) -> tauri::Resu
         .copy()
         .item(&MenuItemBuilder::with_id("copy_html", "Copy HTML").build(app)?)
         .paste()
-        .build()?;
+        .build()
+}
 
-    // The ticked item reflects the current override; neither is ticked when
-    // the theme follows the system.
-    let settings = SubmenuBuilder::new(app, "Settings")
+fn settings_submenu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    let cfg = config::load();
+    SubmenuBuilder::new(app, "Settings")
         .item(
             &CheckMenuItemBuilder::with_id("theme_light", "Light Theme")
                 .checked(cfg.theme.as_deref() == Some("light"))
@@ -106,28 +104,29 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>, has_path: bool) -> tauri::Resu
                 .checked(cfg.theme.as_deref() == Some("dark"))
                 .build(app)?,
         )
-        .build()?;
-
-    MenuBuilder::new(app).items(&[&file, &edit, &settings]).build()
+        .build()
 }
 
-/// Apply `menu` to every open window (menus are per-window on Linux).
-fn apply<R: Runtime>(app: &AppHandle<R>, menu: Menu<R>) -> tauri::Result<()> {
-    for (_, window) in app.webview_windows() {
-        window.set_menu(menu.clone())?;
-    }
-    Ok(())
-}
-
-/// Rebuild and re-apply the menu. Called by the frontend after the open
-/// document, the recent list, or the theme changes.
+/// Pop up one of the menus as a context menu, under the button that asked for
+/// it. `has_path` gates the File items that only apply to a saved file.
 #[tauri::command]
-pub fn refresh_menu<R: Runtime>(app: AppHandle<R>, has_path: bool) -> Result<(), String> {
-    let menu = build_menu(&app, has_path).map_err(|e| e.to_string())?;
-    apply(&app, menu).map_err(|e| e.to_string())
+pub fn popup_menu<R: Runtime>(
+    app: AppHandle<R>,
+    window: tauri::Window<R>,
+    which: String,
+    has_path: bool,
+) -> Result<(), String> {
+    let submenu = match which.as_str() {
+        "file" => file_submenu(&app, has_path),
+        "edit" => edit_submenu(&app),
+        "settings" => settings_submenu(&app),
+        other => return Err(format!("unknown menu: {other}")),
+    }
+    .map_err(|e| e.to_string())?;
+    submenu.popup(window).map_err(|e| e.to_string())
 }
 
-fn spawn_new_window<R: Runtime>(_app: &AppHandle<R>) {
+fn spawn_new_window() {
     if let Ok(exe) = std::env::current_exe() {
         // `--new` tells the fresh process to open an untitled buffer rather
         // than the file picker it would show on a bare launch.
@@ -139,7 +138,7 @@ fn spawn_new_window<R: Runtime>(_app: &AppHandle<R>) {
 /// to the frontend otherwise.
 pub fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
     if id == "new_window" {
-        spawn_new_window(app);
+        spawn_new_window();
         return;
     }
     if let Some(path) = id.strip_prefix("recent:") {
@@ -149,9 +148,8 @@ pub fn on_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
         );
         return;
     }
-    // recent_none and any unknown id are inert.
     if id == "recent_none" {
-        return;
+        return; // inert placeholder
     }
     let _ = app.emit("menu-action", MenuAction { name: id.to_owned(), path: None });
 }

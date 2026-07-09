@@ -1,7 +1,7 @@
 import { EditorSelection, type StateCommand } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-import { indentLess, indentMore, insertTab } from "@codemirror/commands";
+import { indentLess, indentMore, insertTab, redo, undo } from "@codemirror/commands";
 
 /**
  * Standard editing keys plus the small set of markdown shortcuts from the plan:
@@ -104,4 +104,9 @@ export const markdownShortcuts = keymap.of([
   { key: "Mod-e", run: toggleInlineCode, preventDefault: true },
   { key: "Mod-k", run: insertLink, preventDefault: true },
   { key: "Tab", run: indentListOrTab, shift: indentLess, preventDefault: true },
+  // Undo/redo bound here too (not only via the default keymap) so they are
+  // guaranteed even though the menu items carry no accelerator.
+  { key: "Mod-z", run: undo, preventDefault: true },
+  { key: "Mod-Shift-z", run: redo, preventDefault: true },
+  { key: "Mod-y", run: redo, preventDefault: true },
 ]);

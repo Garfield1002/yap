@@ -17,15 +17,16 @@
     deleteFile,
     renameFile,
     recordRecent,
-    refreshMenu,
   } from "./lib/persistence/api";
   import { Autosave } from "./lib/persistence/autosave";
   import { watchFile } from "./lib/persistence/watcher";
   import { basename, dirname, fileState } from "./lib/persistence/fileStore.svelte";
   import { initTheme, setTheme, type Theme } from "./lib/ui/theme";
   import { markdownToHtml } from "./lib/export/markdownToHtml";
+  import Titlebar from "./lib/ui/Titlebar.svelte";
   import StatusBar from "./lib/ui/StatusBar.svelte";
   import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
+  import UnsavedDialog from "./lib/ui/UnsavedDialog.svelte";
 
   const MD_FILTERS = [{ name: "Markdown", extensions: ["md", "markdown", "mdx", "txt"] }];
   const AUTOSAVE_MS = 5000;
@@ -122,7 +123,6 @@
     });
     await setupWatcher(path);
     await recordRecent(path);
-    await refreshMenu(true);
     refreshTitle();
   }
 
@@ -136,7 +136,6 @@
     view?.dispatch({
       effects: documentDirCompartment.reconfigure(documentDirectory.of("")),
     });
-    await refreshMenu(false);
     refreshTitle();
   }
 
@@ -175,7 +174,6 @@
     } else {
       fileState.path = null;
       fileState.dirty = false;
-      await refreshMenu(false);
       refreshTitle();
     }
     view.focus();
@@ -260,15 +258,25 @@
 
   async function chooseTheme(theme: Theme) {
     await setTheme(theme);
-    await refreshMenu(!!fileState.path);
   }
 
+  // Route through the close handler so an unsaved untitled buffer is caught.
   async function quit() {
-    try {
-      await autosave?.flush();
-    } finally {
-      await win.destroy();
-    }
+    await win.close();
+  }
+
+  let showUnsaved = $state(false);
+  let closeResolver: ((choice: "save" | "discard" | "cancel") => void) | null = null;
+
+  function promptUnsaved(): Promise<"save" | "discard" | "cancel"> {
+    showUnsaved = true;
+    return new Promise((resolve) => (closeResolver = resolve));
+  }
+
+  function resolveUnsaved(choice: "save" | "discard" | "cancel") {
+    showUnsaved = false;
+    closeResolver?.(choice);
+    closeResolver = null;
   }
 
   async function handleMenuAction(name: string, path?: string | null) {
@@ -321,14 +329,36 @@
       await openDocument(typeof picked === "string" ? picked : null);
     }
 
-    // The window must not go away before the debounce timer has fired.
+    // The window must not go away before the debounce timer has fired, and an
+    // untitled buffer with content -- which autosave cannot persist -- must ask
+    // before it is thrown away.
     unlistenClose = await win.onCloseRequested(async (event) => {
       event.preventDefault();
-      try {
-        await autosave?.flush();
-      } finally {
-        await win.destroy();
+
+      if (fileState.path) {
+        // Titled: flushing pending edits is enough, nothing is lost.
+        try {
+          await autosave?.flush();
+        } finally {
+          await win.destroy();
+        }
+        return;
       }
+
+      if ((view?.state.doc.length ?? 0) === 0) {
+        await win.destroy();
+        return;
+      }
+
+      const choice = await promptUnsaved();
+      if (choice === "cancel") return;
+      if (choice === "discard") {
+        await win.destroy();
+        return;
+      }
+      // "save": succeeds only if the user picks a path in the dialog.
+      await save();
+      if (fileState.path) await win.destroy();
     });
 
     unlistenMenu = await listen<{ name: string; path: string | null }>("menu-action", (event) =>
@@ -369,11 +399,20 @@
   });
 </script>
 
+<Titlebar />
 <main bind:this={host}></main>
 <StatusBar />
 
 {#if fileState.conflict}
   <ConflictDialog onKeepMine={keepMine} onLoadTheirs={loadTheirs} />
+{/if}
+
+{#if showUnsaved}
+  <UnsavedDialog
+    onSave={() => resolveUnsaved("save")}
+    onDiscard={() => resolveUnsaved("discard")}
+    onCancel={() => resolveUnsaved("cancel")}
+  />
 {/if}
 
 <style>

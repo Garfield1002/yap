@@ -23,8 +23,10 @@
   --code-bg: #f2f4f7;
   --code-border: #e3e7eb;
   --cursor: #0969da;
-  --selection: #b3d4fd;
-  --selection-blur: #dbe6f2;
+  /* Derived from the accent so the selection always matches the theme. Defined
+     once: `var(--accent)` resolves per theme, so these need no dark override. */
+  --selection: color-mix(in srgb, var(--accent) 28%, transparent);
+  --selection-blur: color-mix(in srgb, var(--accent) 14%, transparent);
   --danger: #cf222e;
 
   /* syntax */
@@ -54,8 +56,6 @@
     --code-bg: #1c2027;
     --code-border: #2b313a;
     --cursor: #6cb6ff;
-    --selection: #2f4b6e;
-    --selection-blur: #262c35;
     --danger: #ff7b72;
 
     --syn-keyword: #ff7b72;
@@ -80,8 +80,6 @@
   --code-bg: #1c2027;
   --code-border: #2b313a;
   --cursor: #6cb6ff;
-  --selection: #2f4b6e;
-  --selection-blur: #262c35;
   --danger: #ff7b72;
 
   --syn-keyword: #ff7b72;

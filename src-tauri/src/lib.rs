@@ -20,7 +20,8 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             start_untitled: Mutex::new(start_untitled),
             watcher: Mutex::new(None),
         })
-        .menu(|app| menu::build_menu(app, false))
+        // No persistent menu bar: the frontend draws a themed title bar and
+        // pops native submenus up from it via `popup_menu`.
         .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             commands::get_initial_file,
@@ -33,7 +34,7 @@ pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
             config::get_config,
             config::set_theme,
             config::record_recent,
-            menu::refresh_menu,
+            menu::popup_menu,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
