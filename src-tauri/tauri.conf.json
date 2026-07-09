@@ -27,13 +27,23 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["rpm", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "shortDescription": "Live-preview markdown editor",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown",
+        "description": "Markdown document",
+        "mimeType": "text/markdown"
+      }
     ]
   }
 }

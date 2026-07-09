@@ -132,7 +132,7 @@ Two traps, both guarded by tests:
 - [x] **Phase 4 — Custom Lezer extensions.** Math + footnotes + widgets + KaTeX
       cache. The parse-tree snapshot tests over adversarial fixtures are the
       most valuable tests in the repo.
-- [ ] **Phase 5 — Shortcuts, polish, packaging.** Keymap commands, typography
+- [x] **Phase 5 — Shortcuts, polish, packaging.** Keymap commands, typography
       pass, IME smoke test (CJK into a styled paragraph), 1–2 MB profiling pass,
       `cargo tauri build` → `.rpm` + AppImage + `.desktop` with `%F`.
 
@@ -155,6 +155,35 @@ Two traps, both guarded by tests:
 No maintained Lezer markdown extension exists for math or footnotes; both are
 custom `MarkdownConfig` extensions (`defineNodes` + `InlineParser`/`BlockParser`).
 Lezer's own `LinkReference` and `FencedCode` are the reference models.
+
+### Phase 5 notes
+
+- **Shortcuts** (`markdownShortcuts.ts`): `Mod-b`/`Mod-i`/`Mod-e` toggle bold /
+  italic / inline code (wrap, or unwrap when the selection is already wrapped);
+  `Mod-k` wraps as `[text]()` with the cursor in the parens; `Tab` nests a list
+  item (`indentMore`) and inserts indentation elsewhere, `Shift-Tab` dedents.
+  Installed ahead of the default keymap so it wins the precedence tie. All
+  commands are ordinary buffer edits, so undo and autosave see them normally,
+  and all are unit-tested as pure state transforms.
+- **Startup / profiling.** Snappy launch is the priority. KaTeX (~280 KB of JS +
+  CSS + fonts) is the dominant frontend weight, so `MathWidget` imports it
+  lazily on the first formula; a math-free document never loads it. This moved
+  KaTeX out of the eager bundle into its own async chunk and roughly halved the
+  startup JS (index ~560 KB → ~297 KB). Fenced-code grammars were already lazy
+  via `codeLanguages`. Until KaTeX lands, a formula shows its raw source, then
+  swaps in and (for block math) requests a re-measure.
+- **Packaging.** `bundle.fileAssociations` registers `.md`/`.markdown` with
+  `text/markdown`; Tauri writes the `MimeType=` and the `Exec=… %F` into the
+  generated `.desktop`, matching the one-process-per-file model. Linux targets
+  pinned to `rpm` + `appimage`.
+
+**Not verified in this session** (need a display or a full toolchain, deferred
+to a real build/QA pass): `cargo tauri build` producing the `.rpm`/AppImage and
+the resulting `.desktop`; the CJK IME smoke test (the design guarantee -- the
+composing block is raw and decorations rebuild only from transactions -- is in
+place, but was not exercised live); and a runtime 1–2 MB scroll/typing profile
+in the running webview. KaTeX painting in a live webview also remains unverified
+(see Open items).
 
 ## Pitfalls (review checklist)
 

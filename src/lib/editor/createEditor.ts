@@ -15,6 +15,7 @@ import { yapLezerExtensions } from "./lezer";
 import { yapTheme, yapHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
+import { markdownShortcuts } from "./markdownShortcuts";
 
 export interface EditorOptions {
   parent: HTMLElement;
@@ -50,6 +51,8 @@ export function createEditor(opts: EditorOptions): EditorView {
       documentDirectory.of(opts.documentDir ?? ""),
       livePreview(),
       linkHandling,
+      // Ahead of the default keymap so Mod-b/i/k and Tab win the precedence tie.
+      markdownShortcuts,
       yapTheme,
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown
