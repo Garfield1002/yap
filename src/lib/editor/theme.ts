@@ -41,75 +41,123 @@ export const yapTheme = EditorView.theme({
     backgroundColor: "var(--selection-blur)",
   },
 
-  // Search / replace panel.
+  // Custom find/replace panel (see searchPanel.ts).
   ".cm-panels": {
     backgroundColor: "var(--bg)",
     color: "var(--fg)",
   },
-  ".cm-panels.cm-panels-top": {
-    borderBottom: "1px solid var(--border, var(--fg-faint))",
+  ".cm-panels.cm-panels-bottom": {
+    borderTop: "1px solid var(--border, var(--fg-faint))",
   },
-  ".cm-panel.cm-search": {
+  ".yap-search": {
     fontFamily: "var(--font-prose)",
-    padding: "6px 8px",
+    padding: "7px 9px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "7px",
   },
-  ".cm-panel.cm-search label": {
-    fontSize: "0.85em",
-    color: "var(--fg-dim)",
+  ".yap-search-row": {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
   },
-  ".cm-panel.cm-search input, .cm-panel.cm-search button": {
+  // `display: flex` above would otherwise beat the UA `[hidden]` rule, keeping
+  // the collapsed replace row visible.
+  ".yap-search-row[hidden]": {
+    display: "none",
+  },
+  ".yap-search-field": {
+    flex: "1",
+    minWidth: "0",
+    backgroundColor: "var(--bg)",
+    color: "var(--fg)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    padding: "4px 8px",
     fontFamily: "inherit",
+    fontSize: "0.9em",
   },
-  ".cm-panel.cm-search input[type=text]": {
-    backgroundColor: "var(--bg)",
-    color: "var(--fg)",
-    border: "1px solid var(--border, var(--fg-faint))",
-    borderRadius: "4px",
-    padding: "2px 6px",
-  },
-  ".cm-panel.cm-search button": {
-    backgroundColor: "transparent",
-    backgroundImage: "none",
-    color: "var(--fg)",
-    border: "1px solid var(--border, var(--fg-faint))",
-    borderRadius: "4px",
-    padding: "2px 8px",
-  },
-  ".cm-panel.cm-search button:hover": {
-    backgroundColor: "var(--selection-blur)",
-  },
-  ".cm-panel.cm-search [name=close]": {
-    color: "var(--fg-dim)",
-  },
-  // Native checkboxes render nearly invisibly on the light panel, so draw our
-  // own box with an explicit border and accent-colored check.
-  ".cm-panel.cm-search input[type=checkbox]": {
-    appearance: "none",
-    WebkitAppearance: "none",
-    width: "13px",
-    height: "13px",
-    margin: "0 4px 0 0",
-    border: "1px solid var(--fg-faint)",
-    borderRadius: "3px",
-    backgroundColor: "var(--bg)",
-    position: "relative",
-    verticalAlign: "middle",
-    cursor: "pointer",
-  },
-  ".cm-panel.cm-search input[type=checkbox]:checked": {
-    backgroundColor: "var(--accent)",
+  ".yap-search-field:focus": {
+    outline: "none",
     borderColor: "var(--accent)",
   },
-  ".cm-panel.cm-search input[type=checkbox]:checked::after": {
-    content: '""',
-    position: "absolute",
-    left: "3.5px",
-    top: "0.5px",
-    width: "3px",
-    height: "7px",
-    border: "solid var(--bg)",
-    borderWidth: "0 2px 2px 0",
-    transform: "rotate(45deg)",
+  ".yap-search-count": {
+    fontSize: "0.8em",
+    color: "var(--fg-dim)",
+    minWidth: "3.5em",
+    textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
+  },
+  // Icon buttons: up/down navigation, replace-expand caret, and close.
+  ".yap-search-icon": {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "26px",
+    height: "26px",
+    fontSize: "0.95em",
+    lineHeight: "1",
+    background: "transparent",
+    color: "var(--fg)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    cursor: "pointer",
+    padding: "0",
+  },
+  ".yap-search-icon:hover": {
+    backgroundColor: "var(--selection-blur)",
+  },
+  ".yap-search-expand": {
+    transition: "transform 120ms ease, color 120ms ease",
+  },
+  ".yap-search-expand.expanded": {
+    transform: "rotate(90deg)",
+    color: "var(--accent)",
+    borderColor: "var(--accent)",
+  },
+  // A deliberately large, borderless close cross.
+  ".yap-search-close": {
+    width: "28px",
+    height: "28px",
+    fontSize: "1.25em",
+    border: "none",
+    color: "var(--fg-dim)",
+  },
+  ".yap-search-close:hover": {
+    backgroundColor: "transparent",
+    color: "var(--fg)",
+  },
+  ".yap-search-toggle": {
+    fontFamily: "inherit",
+    fontSize: "0.78em",
+    whiteSpace: "nowrap",
+    background: "transparent",
+    color: "var(--fg-dim)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    padding: "4px 9px",
+    cursor: "pointer",
+  },
+  ".yap-search-toggle:hover": {
+    backgroundColor: "var(--selection-blur)",
+  },
+  ".yap-search-toggle.active": {
+    backgroundColor: "var(--accent)",
+    borderColor: "var(--accent)",
+    color: "var(--bg)",
+  },
+  ".yap-search-btn": {
+    fontFamily: "inherit",
+    fontSize: "0.85em",
+    background: "transparent",
+    color: "var(--fg)",
+    border: "1px solid var(--border, var(--fg-faint))",
+    borderRadius: "4px",
+    padding: "4px 11px",
+    cursor: "pointer",
+  },
+  ".yap-search-btn:hover": {
+    backgroundColor: "var(--selection-blur)",
   },
   ".cm-searchMatch": {
     backgroundColor: "var(--selection-blur)",

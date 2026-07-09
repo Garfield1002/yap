@@ -10,6 +10,7 @@ import {
 } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
+import { searchPanel } from "./searchPanel";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
 import { yapMarkdown } from "./markdownLang";
 import { yapLezerExtensions } from "./lezer";
@@ -54,9 +55,9 @@ export function createEditor(opts: EditorOptions): EditorView {
       highlightSpecialChars(),
       indentOnInput(),
       bracketMatching(),
-      // Search/replace panel (Mod-f / Mod-Alt-f) with regex, match-case and
-      // whole-word toggles built in.
-      search({ top: true }),
+      // Custom bottom find/replace panel (Mod-f / Mod-Alt-f): worded toggles,
+      // up/down navigation, a live match count, and a collapsible replace row.
+      search({ createPanel: searchPanel }),
       EditorState.allowMultipleSelections.of(true),
       EditorView.lineWrapping,
       yapMarkdown(yapLezerExtensions),
