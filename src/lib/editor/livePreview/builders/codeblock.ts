@@ -4,12 +4,17 @@ import type { Builder } from "../builder";
 /**
  * Gives fenced and indented code blocks a monospace, tinted slab.
  *
- * The fence lines are dimmed rather than hidden. Collapsing them would delete
- * two lines from the layout every time the cursor leaves the block, and the
- * document would jump.
+ * A rendered fence collapses its ``` lines entirely -- newline included -- so
+ * the slab shows only the code, the way block math drops its `$$`. The
+ * slab's rounded top/bottom then land on the first and last *content* lines.
+ * When the block is pinned raw (the cursor is editing it) the fences come back,
+ * dimmed in place. Because a revealed fence line is the same height as the gap
+ * it leaves when hidden, the toggle doesn't shift the document.
  *
- * Nothing is replaced here, so the highlighting of the embedded language --
- * which comes from the nested Lezer parse, not from decorations -- is untouched.
+ * Nothing about the code text is replaced, so the highlighting of the embedded
+ * language -- which comes from the nested Lezer parse, not from decorations --
+ * is untouched. The line-break-spanning hides are legal only because these
+ * decorations come from a StateField, not a plugin.
  */
 export function codeblock(node: SyntaxNodeRef, b: Builder): boolean | void {
   if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
@@ -18,18 +23,43 @@ export function codeblock(node: SyntaxNodeRef, b: Builder): boolean | void {
   const firstLine = doc.lineAt(node.from).number;
   const lastLine = doc.lineAt(node.to).number;
 
-  for (let n = firstLine; n <= lastLine; n++) {
+  // Only a fully-rendered fence with a body has fences worth collapsing.
+  // Indented code has none; a raw block shows its source; a bodyless fence
+  // (`lastLine - firstLine < 2`) would collapse to nothing.
+  const raw = b.isRaw(node.from, node.to);
+  const hideFences = node.name === "FencedCode" && !raw && lastLine - firstLine >= 2;
+
+  const slabFirst = hideFences ? firstLine + 1 : firstLine;
+  const slabLast = hideFences ? lastLine - 1 : lastLine;
+
+  for (let n = slabFirst; n <= slabLast; n++) {
     const line = doc.line(n);
     b.line(line.from, "cm-code-line");
-    if (n === firstLine) b.line(line.from, "cm-code-first");
-    if (n === lastLine) b.line(line.from, "cm-code-last");
+    if (n === slabFirst) b.line(line.from, "cm-code-first");
+    if (n === slabLast) b.line(line.from, "cm-code-last");
   }
 
-  if (node.name === "FencedCode") {
-    for (const mark of node.node.getChildren("CodeMark")) {
-      b.mark(mark.from, mark.to, "cm-md-mark");
+  if (node.name !== "FencedCode") return;
+
+  if (hideFences) {
+    // Drop each fence line by hiding it together with the line break that
+    // *precedes* it, folding the empty line up into the line above. Hiding the
+    // *following* break instead would merge the fence into the first body line
+    // and CodeMirror would drop that line's slab decorations with it. The
+    // opening fence has no preceding line to fold into only when it is line 1.
+    if (firstLine > 1) {
+      b.hide(doc.line(firstLine - 1).to, doc.line(firstLine).to);
+    } else {
+      b.hide(doc.line(firstLine).from, doc.line(firstLine + 1).from);
     }
-    const info = node.node.getChild("CodeInfo");
-    if (info) b.mark(info.from, info.to, "cm-md-mark");
+    b.hide(doc.line(lastLine - 1).to, doc.line(lastLine).to);
+    return;
   }
+
+  // Raw, or nothing to collapse: keep the fences visible but dimmed.
+  for (const mark of node.node.getChildren("CodeMark")) {
+    b.mark(mark.from, mark.to, "cm-md-mark");
+  }
+  const info = node.node.getChild("CodeInfo");
+  if (info) b.mark(info.from, info.to, "cm-md-mark");
 }

@@ -165,18 +165,31 @@ describe("task list", () => {
 });
 
 describe("code blocks", () => {
-  it("gives every line the code class and dims the fences", () => {
+  it("collapses the fences and slabs only the body when rendered", () => {
     const doc = "para\n\n```rust\nlet x = 1;\n```";
-    const found = classes(doc, 0);
-    expect(found.filter((c) => c.startsWith("cm-code-line")).length).toBe(3);
+    const found = classes(doc, 0); // cursor outside the block
+    // Only the single body line carries the slab, with both rounded corners.
+    expect(found.filter((c) => c.startsWith("cm-code-line")).length).toBe(1);
     expect(found).toContain("cm-code-first:");
     expect(found).toContain("cm-code-last:");
-    expect(found).toContain("cm-md-mark:```");
-    expect(found).toContain("cm-md-mark:rust");
+    // The ``` and info string are gone, not merely dimmed.
+    expect(found.some((c) => c.startsWith("cm-md-mark"))).toBe(false);
+    // Each fence is hidden together with the newline that precedes it, so the
+    // empty line folds up into the line above rather than into the body.
+    expect(hidden(doc, 0)).toEqual(["\n```rust", "\n```"]);
   });
 
-  it("never hides a fence", () => {
-    const doc = "para\n\n```js\nlet y\n```";
+  it("reveals and dims the fences while the block is edited", () => {
+    const doc = "para\n\n```rust\nlet x = 1;\n```";
+    const found = classes(doc, 16); // cursor on the body line
+    expect(found.filter((c) => c.startsWith("cm-code-line")).length).toBe(3);
+    expect(found).toContain("cm-md-mark:```");
+    expect(found).toContain("cm-md-mark:rust");
+    expect(hidden(doc, 16)).toEqual([]);
+  });
+
+  it("keeps a bodyless fence visible rather than collapsing to nothing", () => {
+    const doc = "para\n\n```\n```";
     expect(hidden(doc, 0)).toEqual([]);
   });
 

@@ -75,15 +75,14 @@
   padding-bottom: 0.35em;
 }
 
+/* Full-width block so a small image can center in the text column and a large
+   one clamps to it. `text-align` centers the inline-block image within. */
 .cm-image {
-  display: inline-block;
-  max-width: 100%;
-  vertical-align: bottom;
-}
-/* `display: block` so the image caps at the document width instead of letting
-   an inline-block shrink-wrap to the natural pixel size and overflow. */
-.cm-image img {
   display: block;
+  text-align: center;
+}
+.cm-image img {
+  display: inline-block;
   max-width: 100%;
   height: auto;
   border-radius: 6px;

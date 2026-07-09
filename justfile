@@ -43,3 +43,10 @@ typecheck:
 # Release bundle (.rpm, AppImage).
 bundle:
     npm run tauri build
+
+# Install the yap binary into ~/.cargo/bin.
+install:
+    # tauri-build embeds dist/ into the binary, so the frontend has to exist first.
+    npm run build
+    # Without custom-protocol, tauri loads the frontend from devUrl instead of dist/.
+    cargo install --path src-tauri --locked --features tauri/custom-protocol
