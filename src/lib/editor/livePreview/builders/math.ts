@@ -14,8 +14,13 @@ function texOf(node: SyntaxNode, state: EditorState): string {
 /**
  * `$x$` and `$$x$$` become KaTeX. The whole node is replaced, so nothing may
  * descend into it -- a decoration inside a replaced range partially overlaps it
- * and CodeMirror throws. Block math is a `block: true` replace, which is legal
- * only because these decorations come from a StateField (see decorationField).
+ * and CodeMirror throws.
+ *
+ * Block math is treated exactly like a fenced code block: when the cursor is
+ * away it renders as a boxed widget; when it is being edited the block shows its
+ * source in the same slab, with the `$$` delimiters dimmed rather than hidden.
+ * That, together with `BlockMath` being a pinned block container (see
+ * `activeRegions`), gives it the code block's steady, non-reflowing feel.
  */
 export function math(node: SyntaxNodeRef, b: Builder): boolean | void {
   if (node.name === "InlineMath") {
@@ -24,7 +29,25 @@ export function math(node: SyntaxNodeRef, b: Builder): boolean | void {
   }
 
   if (node.name === "BlockMath") {
-    b.replace(node.from, node.to, new MathWidget(texOf(node.node, b.state), true), true);
+    const block = node.node;
+
+    if (b.isRaw(node.from, node.to)) {
+      // Editing: box the source, dim the fences. Mirrors `codeblock`.
+      const doc = b.state.doc;
+      const firstLine = doc.lineAt(node.from).number;
+      const lastLine = doc.lineAt(node.to).number;
+      for (let n = firstLine; n <= lastLine; n++) {
+        const line = doc.line(n);
+        b.line(line.from, "cm-math-line");
+        if (n === firstLine) b.line(line.from, "cm-math-first");
+        if (n === lastLine) b.line(line.from, "cm-math-last");
+      }
+      for (const mark of block.getChildren("MathMark")) b.mark(mark.from, mark.to, "cm-md-mark");
+      return false;
+    }
+
+    // `block: true` replace, legal only because these come from a StateField.
+    b.replace(node.from, node.to, new MathWidget(texOf(block, b.state), true), true);
     return false;
   }
 }

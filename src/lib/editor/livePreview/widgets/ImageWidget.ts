@@ -54,10 +54,13 @@ export class ImageWidget extends WidgetType {
     img.alt = this.alt;
     img.src = this.resolved();
 
+    // Reserve space via aspect-ratio, not an explicit pixel width. A width
+    // attribute wider than the text column would defeat `max-width: 100%` and
+    // push the image past the document width; aspect-ratio lets the CSS cap the
+    // rendered width while the height still follows without a layout jump.
     const known = dimensions.get(img.src);
     if (known) {
-      img.width = known.width;
-      img.height = known.height;
+      img.style.aspectRatio = `${known.width} / ${known.height}`;
     }
 
     img.onload = () => {

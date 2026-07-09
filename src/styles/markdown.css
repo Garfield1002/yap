@@ -80,7 +80,10 @@
   max-width: 100%;
   vertical-align: bottom;
 }
+/* `display: block` so the image caps at the document width instead of letting
+   an inline-block shrink-wrap to the natural pixel size and overflow. */
 .cm-image img {
+  display: block;
   max-width: 100%;
   height: auto;
   border-radius: 6px;
@@ -105,20 +108,46 @@
   text-decoration-color: var(--fg-faint);
 }
 
-/* Math. Inline KaTeX rides on the text baseline; block math centres on its own
-   line. KaTeX ships its own layout, so we only place the widget. */
+/* Math. Inline KaTeX rides on the text baseline. Block math gets the same
+   slab as a fenced code block, both when rendered (the widget) and while being
+   edited (the raw source lines below), so entering and leaving it never changes
+   the box the text sits in. */
 .cm-math-inline {
   display: inline-block;
 }
 .cm-math-block {
   display: block;
   text-align: center;
-  padding: 0.4em 0;
   overflow-x: auto;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  padding: 0.5em 0.75em;
 }
 /* A half-typed formula: KaTeX renders the message in this colour. */
 .cm-math .katex-error {
   color: var(--danger);
+}
+
+/* Raw block-math source while editing: the fenced-code slab, monospace. */
+.cm-editor .cm-content .cm-math-line {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--code-bg);
+  border-left: 1px solid var(--code-border);
+  border-right: 1px solid var(--code-border);
+  padding-left: 0.75em;
+  padding-right: 0.75em;
+}
+.cm-editor .cm-content .cm-math-first {
+  border-top: 1px solid var(--code-border);
+  border-radius: 6px 6px 0 0;
+  padding-top: 0.35em;
+}
+.cm-editor .cm-content .cm-math-last {
+  border-bottom: 1px solid var(--code-border);
+  border-radius: 0 0 6px 6px;
+  padding-bottom: 0.35em;
 }
 
 /* Footnotes. A reference is a small superscript label; a definition line is

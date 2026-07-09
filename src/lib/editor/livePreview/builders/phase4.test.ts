@@ -170,6 +170,17 @@ describe("math decorations", () => {
     const doc = "$$\ny = x\n$$";
     expect(entries(doc, 3).filter((e) => e.kind === "widget")).toEqual([]);
   });
+
+  it("boxes the raw source like a code block while editing", () => {
+    const doc = "$$\ny = x\n$$";
+    const found = classes(doc, 3); // cursor on the content line
+    expect(found.filter((c) => c.startsWith("cm-math-line")).length).toBe(3);
+    expect(found).toContain("cm-math-first:");
+    expect(found).toContain("cm-math-last:");
+    // The `$$` fences are dimmed, not hidden.
+    expect(found.filter((c) => c === "cm-md-mark:$$").length).toBe(2);
+    expect(hidden(doc, 3)).toEqual([]);
+  });
 });
 
 describe("footnote decorations", () => {
