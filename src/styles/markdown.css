@@ -135,11 +135,19 @@
   border-radius: 0 0 6px 6px;
 }
 
-/* Full-width block so a small image can center in the text column and a large
-   one clamps to it. `text-align` centers the inline-block image within. */
+/* Full-width so a small image can center in the text column and a large one
+   clamps to it (`text-align` centers the inline-block image within). It is
+   `inline-block` + `vertical-align: top`, not `block`, so it shares the line box
+   with CodeMirror's zero-width widget buffers instead of forcing an extra ~24px
+   line box beside them -- that extra row was padding the image and shifting the
+   document when toggling source/rendered. `line-height: 0` keeps those buffers
+   from adding descent of their own. */
 .cm-image {
-  display: block;
+  display: inline-block;
+  width: 100%;
+  vertical-align: top;
   text-align: center;
+  line-height: 0;
 }
 .cm-image img {
   display: inline-block;

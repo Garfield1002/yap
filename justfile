@@ -45,8 +45,10 @@ bundle:
     npm run tauri build
 
 # Linux packages. Installing the .deb or .rpm registers bulletmd with the desktop.
+# NO_STRIP: linuxdeploy's bundled `strip` is too old for DT_RELR (.relr.dyn)
+# relocations in modern distro libs (e.g. Fedora 43), which breaks the AppImage.
 bundle-linux:
-    npm run tauri build -- --bundles deb,rpm,appimage
+    NO_STRIP=true npm run tauri build -- --bundles deb,rpm,appimage
 
 # macOS application bundle and drag-to-Applications installer (run on a Mac).
 bundle-macos:

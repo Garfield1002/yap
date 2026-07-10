@@ -10,7 +10,10 @@ import { convertFileSrc } from "@tauri-apps/api/core";
  */
 const GRID = 24;
 const DEFAULT_VISIBLE_HEIGHT = GRID * 8;
-const DEFAULT_ALLOCATION_HEIGHT = DEFAULT_VISIBLE_HEIGHT + GRID;
+// The image fills its grid-aligned block exactly: no extra row and no baseline
+// inset, so it lands on the same rows the raw source line occupies and the
+// document doesn't shift when toggling between source and rendered.
+const DEFAULT_ALLOCATION_HEIGHT = DEFAULT_VISIBLE_HEIGHT;
 
 interface ImageDimensions {
   width: number;
@@ -88,7 +91,7 @@ export class ImageWidget extends WidgetType {
     const surface = document.createElement("span");
     surface.className = "cm-image-surface";
     surface.style.position = "absolute";
-    surface.style.top = "var(--baseline-block-inset, 18px)";
+    surface.style.top = "0";
     surface.style.right = "0";
     surface.style.left = "0";
     surface.style.display = "flex";
@@ -145,7 +148,7 @@ export class ImageWidget extends WidgetType {
           if (!height || Math.abs(height - appliedHeight) < 0.5) return;
           appliedHeight = height;
           const ratio = img.naturalWidth / img.naturalHeight;
-          const allocation = height + GRID;
+          const allocation = height;
           wrap.style.height = `${allocation}px`;
           surface.style.height = `${height}px`;
           img.style.width = `${height * ratio}px`;
@@ -176,7 +179,7 @@ export class ImageWidget extends WidgetType {
     img.onerror = () => {
       wrap.classList.add("cm-image-broken");
       wrap.style.height = `${GRID * 2}px`;
-      surface.style.height = `${GRID}px`;
+      surface.style.height = `${GRID * 2}px`;
       surface.textContent = this.alt || this.src;
     };
 
