@@ -16,6 +16,10 @@
     "core:window:allow-start-dragging",
     "opener:default",
     "opener:allow-reveal-item-in-dir",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "http://127.0.0.1:23119/**" }]
+    }
   ]
 }

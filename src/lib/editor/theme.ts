@@ -34,11 +34,12 @@ export const yapTheme = EditorView.theme({
     borderLeftColor: "var(--cursor)",
     borderLeftWidth: "2px",
   },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
+  // Use the browser's native selection paint. CodeMirror's optional
+  // `drawSelection()` layer is not composited by WebKitGTK in this app, so it
+  // updates the selection state without leaving a visible highlight.
+  ".cm-content ::selection, .cm-content::selection": {
     backgroundColor: "var(--selection)",
-  },
-  "&:not(.cm-focused) .cm-selectionBackground": {
-    backgroundColor: "var(--selection-blur)",
+    color: "var(--fg)",
   },
 
   // Custom find/replace panel (see searchPanel.ts).

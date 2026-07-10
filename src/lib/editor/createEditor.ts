@@ -2,7 +2,6 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
   keymap,
-  drawSelection,
   dropCursor,
   rectangularSelection,
   crosshairCursor,
@@ -50,7 +49,6 @@ export function createEditor(opts: EditorOptions): EditorView {
     doc: opts.doc,
     extensions: [
       history(),
-      drawSelection(),
       dropCursor(),
       rectangularSelection(),
       crosshairCursor(),

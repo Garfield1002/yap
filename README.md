@@ -39,6 +39,8 @@ watcher that reloads clean edits and prompts on conflicts, and a snappy launch.
   (`Ctrl/Cmd+F`).
 - **Custom themed title bar** with native File / Edit / Settings menus, light and
   dark themes that follow the system (with a manual override), and Open Recent.
+- **Optional plugins** for features that do not belong in the core editor,
+  including spell check, PDF export, and Zotero citations.
 - **One window, one file.** `yap file.md` opens an editor; each file is its own
   process, matching a window manager and a `%F` desktop entry.
 
@@ -133,6 +135,51 @@ export YAP_HOME="$HOME/notes/.yap"
 > `$HOME/**` (`src-tauri/tauri.conf.json`). If you point `YAP_HOME` outside your
 > home directory, pasted images will save but won't display until that scope is
 > widened.
+
+## Plugins
+
+Plugins are optional feature packages: a folder containing a `manifest.json`, a
+JavaScript entry point, and any CSS or data the feature needs. They run as
+trusted code inside yap, so install only plugins you wrote or reviewed.
+
+To install one, open **Settings → Plugins → Install Plugin…** and choose the
+plugin folder — the folder that directly contains `manifest.json`. yap copies
+it into `$YAP_HOME/plugins/` (or `~/.config/yap/plugins/` by default); enable or
+disable installed plugins from the same menu. To update a plugin, replace its
+installed folder and re-enable it.
+
+The bundled plugin folders and their individual setup guides live in
+[`plugins/`](plugins/README.md). They can also be installed manually by copying
+their folder into the plugin directory above.
+
+### Zotero citations
+
+The `plugins/zotero/` plugin searches Zotero Desktop and inserts a
+Pandoc-style citation such as `[@doe2024]`. Open **Zotero: Insert Citation…**
+from the command palette, Plugins menu, or Zotero status-bar item, then search
+by title or creator.
+
+Inserted citations render as compact numbered references (`[1]`) outside the
+cursor range. Add `<!--bibliography-->` on its own line to render the cited
+items as `[number] title, year, authors` in first-citation order.
+
+Before using it, enable Zotero's local HTTP API in **Zotero → Settings →
+Advanced → Allow other applications on this computer to communicate with
+Zotero**. Zotero can be open while you change the setting, but fully restart it
+if the picker still cannot connect. The plugin reads only from
+`http://127.0.0.1:23119/api/`; your library stays on the local machine. You can
+verify the endpoint after enabling it:
+
+```bash
+curl -i http://127.0.0.1:23119/api/
+```
+
+The plugin uses yap's native HTTP client because Zotero's Local API does not
+grant browser CORS access. It uses a Better BibTeX
+`Citation Key:` value from an item's **Extra** field when present; otherwise it
+inserts Zotero's eight-character item key. See
+[Zotero's Local API documentation](https://www.zotero.org/support/dev/web_api/v3/local_api)
+for the preference and endpoint details.
 
 ---
 

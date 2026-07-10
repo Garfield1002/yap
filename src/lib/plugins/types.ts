@@ -57,10 +57,10 @@ export interface YapApi {
       options?: { title?: string; css?: string; renderLine?: (line: string) => string | undefined },
     ): Promise<void>;
   };
-  /** Narrow, named escape hatches for system access. Generic ones (fetch, file
-   *  IO) plus named, task-specific commands (spell check) exposed to the plugins
-   *  that need them, rather than a blanket `shell(anything)`. */
+  /** Narrow, named escape hatches for system access. Generic file IO plus named,
+   *  task-specific commands are exposed instead of a blanket shell capability. */
   system: {
+    /** Native HTTP fetch, scoped by Tauri capabilities rather than webview CORS. */
     fetch: typeof fetch;
     readFile(path: string): Promise<string>;
     writeFile(path: string, contents: string): Promise<void>;

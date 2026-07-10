@@ -16,6 +16,7 @@ import * as cmSearch from "@codemirror/search";
 import * as langMarkdown from "@codemirror/lang-markdown";
 import * as lezerMarkdown from "@lezer/markdown";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
 
 import { registerCommand } from "../commands/registry.svelte";
 import { registerBuilder } from "../editor/livePreview/pluginBuilders";
@@ -168,7 +169,15 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
     },
     export: { markdownToHtml, printHtml, printMarkdown },
     system: {
-      fetch: (input, init) => fetch(input, init),
+      // Zotero rejects browser origins. Tauri's native HTTP plugin performs the
+      // request outside the webview; an empty Origin asks its unsafe-header
+      // support to omit the header altogether. Its capability scope allows
+      // only Zotero's loopback Local API.
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("Origin", "");
+        return nativeFetch(input, { ...init, headers });
+      },
       readFile: async (path) => (await readFile(path)).text,
       writeFile: async (path, contents) => {
         await writeFileAtomic(path, contents);

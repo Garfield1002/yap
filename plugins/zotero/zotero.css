@@ -1,0 +1,108 @@
+.yap-zotero-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding-top: min(20vh, 160px);
+  background: color-mix(in srgb, #000 32%, transparent);
+}
+
+.yap-zotero-dialog {
+  box-sizing: border-box;
+  width: min(620px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--border, #c8ccd0);
+  border-radius: 9px;
+  background: var(--panel, #fff);
+  box-shadow: 0 18px 48px color-mix(in srgb, #000 28%, transparent);
+}
+
+.yap-zotero-query {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border, #c8ccd0);
+  outline: 0;
+  background: transparent;
+  color: var(--text, #1f2328);
+  font: inherit;
+}
+
+.yap-zotero-results {
+  max-height: min(48vh, 420px);
+  overflow: auto;
+}
+
+.yap-zotero-result {
+  display: flex;
+  width: 100%;
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text, #1f2328);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.yap-zotero-result:hover,
+.yap-zotero-result[data-selected="true"] {
+  background: var(--selection, #dbeafe);
+}
+
+.yap-zotero-result-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yap-zotero-result code {
+  color: var(--muted, #656d76);
+  font: 0.85em ui-monospace, monospace;
+}
+
+.yap-zotero-hint {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border, #c8ccd0);
+  color: var(--muted, #656d76);
+  font-size: 0.9em;
+}
+
+.yap-zotero-hint[data-kind="error"] {
+  color: #cf222e;
+}
+
+.yap-zotero-citation {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent, #0969da);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72em;
+  font-weight: 650;
+  vertical-align: super;
+}
+
+.yap-zotero-citation:not(button) {
+  cursor: default;
+}
+
+.yap-zotero-bibliography {
+  margin: 1em 0;
+  color: var(--fg, #1f2328);
+  font-size: 0.92em;
+  line-height: 1.55;
+}
+
+.yap-zotero-bibliography p {
+  margin: 0.35em 0;
+}

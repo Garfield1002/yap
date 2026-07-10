@@ -16,6 +16,7 @@ use commands::AppState;
 pub fn run(initial_path: Option<PathBuf>, start_untitled: bool) {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             initial_path: Mutex::new(initial_path),

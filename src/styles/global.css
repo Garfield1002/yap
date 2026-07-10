@@ -23,10 +23,10 @@
   --code-bg: #f2f4f7;
   --code-border: #e3e7eb;
   --cursor: #0969da;
-  /* Derived from the accent so the selection always matches the theme. Defined
-     once: `var(--accent)` resolves per theme, so these need no dark override. */
-  --selection: color-mix(in srgb, var(--accent) 28%, transparent);
-  --selection-blur: color-mix(in srgb, var(--accent) 14%, transparent);
+  /* Opaque fallbacks: older WebKitGTK releases ignore color-mix() in selection
+     rules, making a selection appear to vanish. */
+  --selection: rgba(9, 105, 218, 0.32);
+  --selection-blur: rgba(9, 105, 218, 0.18);
   --danger: #cf222e;
 
   /* syntax */
@@ -57,6 +57,8 @@
     --code-border: #2b313a;
     --cursor: #6cb6ff;
     --danger: #ff7b72;
+    --selection: rgba(108, 182, 255, 0.36);
+    --selection-blur: rgba(108, 182, 255, 0.2);
 
     --syn-keyword: #ff7b72;
     --syn-string: #7ee787;
@@ -81,6 +83,8 @@
   --code-border: #2b313a;
   --cursor: #6cb6ff;
   --danger: #ff7b72;
+  --selection: rgba(108, 182, 255, 0.36);
+  --selection-blur: rgba(108, 182, 255, 0.2);
 
   --syn-keyword: #ff7b72;
   --syn-string: #7ee787;

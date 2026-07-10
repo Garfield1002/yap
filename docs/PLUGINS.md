@@ -115,12 +115,13 @@ toggling a plugin. Curated-API-only was rejected as too much friction
 while the author is the only customer; the raw-CM6 + hooks split matches
 Obsidian's proven shape.
 
-**System access** is a small set of generic *trusted* Tauri commands
-exposed through `yap.system`: `fetch(url)` (Zotero's local HTTP API),
-scoped file read/write (exports), and spawning **named, allowlisted
-binaries only** (e.g. `marp`) — no generic `shell(anything)`. Keeping
-the hatches named and narrow is what keeps a later per-plugin-permission
-retrofit tractable.
+**System access** is a small set of generic *trusted* Tauri commands exposed
+through `yap.system`: native `fetch(url)` (Zotero's local HTTP API), scoped
+file read/write (exports), and spawning **named, allowlisted binaries only**
+(e.g. `marp`) — no generic `shell(anything)`. The fetch client runs outside the
+webview, so Zotero's browser CORS policy does not apply; Tauri capabilities
+scope the URLs it may access. Keeping the hatches named and narrow is what
+keeps a later per-plugin-permission retrofit tractable.
 
 ---
 
@@ -176,3 +177,14 @@ Dependency-respecting sequence; each step is usable on its own:
 5. **Spell check plugin** — first customer, including the hunspell Rust
    command.
 6. Then: HTML export, PDF export, Zotero connector, Marp.
+
+## Zotero connector
+
+The Zotero citation plugin lives in `plugins/zotero/`. It uses Zotero Desktop's
+read-only Local API at `http://127.0.0.1:23119/api/`, so it needs Zotero's
+**Settings → Advanced → Allow other applications on this computer to communicate
+with Zotero** preference enabled. Its citation picker searches the local library
+and inserts Pandoc-style `[@citekey]` markup. It prefers Better BibTeX's
+`Citation Key:` entry from an item's Extra field and otherwise uses Zotero's
+item key. See `plugins/zotero/README.md` for its optional endpoint/library
+configuration.
