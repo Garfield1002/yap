@@ -165,18 +165,18 @@ describe("task list", () => {
 });
 
 describe("code blocks", () => {
-  it("collapses the fences and slabs only the body when rendered", () => {
+  it("hides the fence text but keeps the fence lines slabbed when rendered", () => {
     const doc = "para\n\n```rust\nlet x = 1;\n```";
     const found = classes(doc, 0); // cursor outside the block
-    // Only the single body line carries the slab, with both rounded corners.
-    expect(found.filter((c) => c.startsWith("cm-block-line")).length).toBe(1);
+    // All three lines carry the slab; the rounded corners land on the fences.
+    expect(found.filter((c) => c.startsWith("cm-block-line")).length).toBe(3);
     expect(found).toContain("cm-block-first:");
     expect(found).toContain("cm-block-last:");
     // The ``` and info string are gone, not merely dimmed.
     expect(found.some((c) => c.startsWith("cm-md-mark"))).toBe(false);
-    // Each fence is hidden together with the newline that precedes it, so the
-    // empty line folds up into the line above rather than into the body.
-    expect(hidden(doc, 0)).toEqual(["\n```rust", "\n```"]);
+    // Only the ``` text is hidden -- within each fence line, no newline folded,
+    // so the block keeps its full height.
+    expect(hidden(doc, 0)).toEqual(["```rust", "```"]);
   });
 
   it("reveals and dims the fences while the block is edited", () => {

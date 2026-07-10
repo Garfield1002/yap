@@ -29,13 +29,13 @@ export function searchPanel(view: EditorView): Panel {
   };
 
   const dom = document.createElement("div");
-  dom.className = "cm-panel yap-search";
+  dom.className = "cm-panel bulletmd-search";
   dom.addEventListener("keydown", onKeydown);
 
   const searchField = input("Find", existing.search);
   const replaceField = input("Replace", existing.replace);
 
-  const count = el("span", "yap-search-count");
+  const count = el("span", "bulletmd-search-count");
 
   const prev = iconButton("↑", "Previous match", () => run(findPrevious));
   const next = iconButton("↓", "Next match", () => run(findNext));
@@ -53,16 +53,16 @@ export function searchPanel(view: EditorView): Panel {
     commit();
   });
 
-  const replaceRow = el("div", "yap-search-row yap-search-replace-row");
+  const replaceRow = el("div", "bulletmd-search-row bulletmd-search-replace-row");
   const expandReplace = iconButton("»", "Toggle replace", toggleReplace);
-  expandReplace.classList.add("yap-search-expand");
+  expandReplace.classList.add("bulletmd-search-expand");
   const close = iconButton("✕", "Close", () => closeSearchPanel(view));
-  close.classList.add("yap-search-close");
+  close.classList.add("bulletmd-search-close");
 
   const replaceBtn = textButton("Replace", () => run(replaceNext));
   const replaceAllBtn = textButton("All", () => run(replaceAll));
 
-  const searchRow = el("div", "yap-search-row");
+  const searchRow = el("div", "bulletmd-search-row");
   searchRow.append(
     searchField,
     count,
@@ -177,7 +177,7 @@ function input(placeholder: string, value: string): HTMLInputElement {
   node.type = "text";
   node.placeholder = placeholder;
   node.value = value;
-  node.className = "yap-search-field";
+  node.className = "bulletmd-search-field";
   return node;
 }
 
@@ -186,7 +186,7 @@ function iconButton(glyph: string, title: string, onClick: () => void): HTMLButt
   node.type = "button";
   node.textContent = glyph;
   node.title = title;
-  node.className = "yap-search-icon";
+  node.className = "bulletmd-search-icon";
   node.addEventListener("click", onClick);
   return node;
 }
@@ -195,7 +195,7 @@ function textButton(label: string, onClick: () => void): HTMLButtonElement {
   const node = document.createElement("button");
   node.type = "button";
   node.textContent = label;
-  node.className = "yap-search-btn";
+  node.className = "bulletmd-search-btn";
   node.addEventListener("click", onClick);
   return node;
 }
@@ -204,7 +204,7 @@ function toggle(label: string, on: boolean, onChange: (on: boolean) => void): HT
   const node = document.createElement("button");
   node.type = "button";
   node.textContent = label;
-  node.className = "yap-search-toggle";
+  node.className = "bulletmd-search-toggle";
   node.setAttribute("aria-pressed", String(on));
   node.classList.toggle("active", on);
   node.addEventListener("click", () => {

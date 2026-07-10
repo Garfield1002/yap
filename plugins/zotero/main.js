@@ -11,6 +11,7 @@
 // present; otherwise the Zotero item key is inserted.
 
 const DEFAULT_LIBRARY = "users/0";
+const GRID = 24;
 const EXCLUDED_ITEM_TYPES = new Set(["annotation", "attachment", "note"]);
 
 function text(value) {
@@ -42,10 +43,10 @@ function searchError(error) {
   return error instanceof Error ? error.message : "Could not search Zotero.";
 }
 
-export async function activate(yap) {
-  const { StateEffect, StateField } = yap.cm.state;
-  const { Decoration, EditorView, ViewPlugin, WidgetType } = yap.cm.view;
-  const settings = await yap.settings.get();
+export async function activate(bulletmd) {
+  const { StateEffect, StateField } = bulletmd.cm.state;
+  const { Decoration, EditorView, ViewPlugin, WidgetType } = bulletmd.cm.view;
+  const settings = await bulletmd.settings.get();
   const library = text(settings.library).replace(/^\/+|\/+$/g, "") || DEFAULT_LIBRARY;
   let activeView = null;
   let openPicker = null;
@@ -55,6 +56,8 @@ export async function activate(yap) {
       ? settings.citations
       : {};
   const resolving = new Set();
+  const bibliographyHeights = new Map();
+  const bibliographyObservers = new WeakMap();
 
   // Citations retain their Markdown source on disk. These decorations merely
   // render it as a numbered reference while the cursor is elsewhere.
@@ -71,7 +74,7 @@ export async function activate(yap) {
     }
     toDOM() {
       const ref = document.createElement(this.followBibliography ? "button" : "span");
-      ref.className = "yap-zotero-citation";
+      ref.className = "bulletmd-zotero-citation";
       ref.textContent = `[${this.number}]`;
       if (this.followBibliography) {
         ref.type = "button";
@@ -108,27 +111,70 @@ export async function activate(yap) {
       );
     }
     get estimatedHeight() {
-      return Math.max(28, this.entries.length * 28);
+      return (
+        bibliographyHeights.get(this.sourcePos) ??
+        Math.max(GRID, this.entries.length * GRID) + GRID
+      );
     }
-    toDOM() {
+    toDOM(view) {
       const bibliography = document.createElement("section");
-      bibliography.className = "yap-zotero-bibliography";
+      bibliography.className = "bulletmd-zotero-bibliography";
       bibliography.dataset.sourcePos = String(this.sourcePos);
+      bibliography.style.boxSizing = "border-box";
+      bibliography.style.position = "relative";
+      const surface = document.createElement("div");
+      surface.className = "bulletmd-zotero-bibliography-surface";
+      surface.style.position = "absolute";
+      surface.style.top = "var(--baseline-block-inset, 18px)";
+      surface.style.right = "0";
+      surface.style.left = "0";
+      surface.style.overflow = "hidden";
+      surface.style.background = "var(--bg)";
+      const knownHeight = bibliographyHeights.get(this.sourcePos);
+      if (knownHeight) {
+        bibliography.style.height = `${knownHeight}px`;
+        surface.style.height = `${Math.max(GRID, knownHeight - GRID)}px`;
+      }
+      const content = document.createElement("div");
+      content.className = "bulletmd-zotero-bibliography-content";
       bibliography.addEventListener("mousedown", (event) => {
         event.preventDefault();
         event.stopPropagation();
         this.revealSource();
       });
       if (this.entries.length === 0) {
-        bibliography.textContent = "No citations in this document.";
-        return bibliography;
+        content.textContent = "No citations in this document.";
+      } else {
+        for (const entry of this.entries) {
+          const line = document.createElement("p");
+          line.textContent = `[${entry.number}] ${entry.title}, ${entry.year}, ${entry.authors}`;
+          content.append(line);
+        }
       }
-      for (const entry of this.entries) {
-        const line = document.createElement("p");
-        line.textContent = `[${entry.number}] ${entry.title}, ${entry.year}, ${entry.authors}`;
-        bibliography.append(line);
-      }
+      surface.append(content);
+      bibliography.append(surface);
+
+      let applied = 0;
+      const resize = new ResizeObserver(() => {
+        const visibleHeight = Math.max(
+          GRID,
+          Math.ceil(content.scrollHeight / GRID) * GRID,
+        );
+        if (visibleHeight === applied) return;
+        applied = visibleHeight;
+        const allocationHeight = visibleHeight + GRID;
+        bibliography.style.height = `${allocationHeight}px`;
+        surface.style.height = `${visibleHeight}px`;
+        bibliographyHeights.set(this.sourcePos, allocationHeight);
+        view.requestMeasure();
+      });
+      resize.observe(content);
+      bibliographyObservers.set(bibliography, resize);
       return bibliography;
+    }
+    destroy(dom) {
+      bibliographyObservers.get(dom)?.disconnect();
+      bibliographyObservers.delete(dom);
     }
     ignoreEvent() {
       return true;
@@ -206,7 +252,19 @@ export async function activate(yap) {
       }
     }
     for (const directive of directives) {
-      if (!isActive(state, directive.from, directive.to)) {
+      if (isActive(state, directive.from, directive.to)) {
+        const height = bibliographyHeights.get(directive.from);
+        if (height) {
+          ranges.push(
+            Decoration.line({
+              attributes: {
+                class: "bulletmd-zotero-bibliography-source-active",
+                style: `min-height: ${height}px; box-sizing: border-box;`,
+              },
+            }).range(state.doc.lineAt(directive.from).from),
+          );
+        }
+      } else {
         ranges.push(
           Decoration.replace({
             widget: new BibliographyWidget(bibliography, directive.from, () => revealBibliography(activeView, directive.from, true)),
@@ -262,7 +320,7 @@ export async function activate(yap) {
       year: text(data.date).match(/^\d{4}/)?.[0] || "",
       authors,
     };
-    void yap.settings.set({ ...settings, citations: cachedCitations }).catch(() => {});
+    void bulletmd.settings.set({ ...settings, citations: cachedCitations }).catch(() => {});
     refreshViews();
   }
 
@@ -309,7 +367,7 @@ export async function activate(yap) {
     url.searchParams.set("limit", "12");
     url.searchParams.set("v", "3");
 
-    const response = await yap.system.fetch(url, {
+    const response = await bulletmd.system.fetch(url, {
       signal,
       headers: { Accept: "application/json", "Zotero-API-Version": "3" },
     });
@@ -330,7 +388,7 @@ export async function activate(yap) {
       url.searchParams.set("q", key);
       url.searchParams.set("qmode", "everything");
     }
-    const response = await yap.system.fetch(url, {
+    const response = await bulletmd.system.fetch(url, {
       headers: { Accept: "application/json", "Zotero-API-Version": "3" },
     });
     if (!response.ok) throw new Error(`Zotero returned ${response.status} ${response.statusText}`);
@@ -356,21 +414,21 @@ export async function activate(yap) {
     if (!view || openPicker) return;
 
     const overlay = document.createElement("div");
-    overlay.className = "yap-zotero-overlay";
+    overlay.className = "bulletmd-zotero-overlay";
     overlay.setAttribute("role", "presentation");
     const dialog = document.createElement("section");
-    dialog.className = "yap-zotero-dialog";
+    dialog.className = "bulletmd-zotero-dialog";
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-label", "Insert Zotero citation");
     const input = document.createElement("input");
-    input.className = "yap-zotero-query";
+    input.className = "bulletmd-zotero-query";
     input.type = "search";
     input.placeholder = "Search your Zotero library…";
     input.autocomplete = "off";
     const results = document.createElement("div");
-    results.className = "yap-zotero-results";
+    results.className = "bulletmd-zotero-results";
     const hint = document.createElement("p");
-    hint.className = "yap-zotero-hint";
+    hint.className = "bulletmd-zotero-hint";
     hint.textContent = "Type a title or author to search Zotero.";
     dialog.append(input, results, hint);
     overlay.append(dialog);
@@ -396,10 +454,10 @@ export async function activate(yap) {
       items.forEach((item, index) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "yap-zotero-result";
+        button.className = "bulletmd-zotero-result";
         if (index === selected) button.dataset.selected = "true";
         const label = document.createElement("span");
-        label.className = "yap-zotero-result-label";
+        label.className = "bulletmd-zotero-result-label";
         label.textContent = itemLabel(item);
         const key = document.createElement("code");
         key.textContent = `@${citationKey(item)}`;
@@ -473,12 +531,12 @@ export async function activate(yap) {
     input.focus();
   }
 
-  yap.editor.registerExtension([referenceField, tracker]);
-  yap.commands.register({
+  bulletmd.editor.registerExtension([referenceField, tracker]);
+  bulletmd.commands.register({
     id: "zotero.insert-citation",
     title: "Zotero: Insert Citation…",
     run: showPicker,
   });
-  yap.menus.addItem({ label: "Insert Zotero Citation…", run: showPicker });
-  yap.statusBar.addItem({ id: "zotero", text: "Zotero", title: "Insert a Zotero citation", onClick: showPicker });
+  bulletmd.menus.addItem({ label: "Insert Zotero Citation…", run: showPicker });
+  bulletmd.statusBar.addItem({ id: "zotero", text: "Zotero", title: "Insert a Zotero citation", onClick: showPicker });
 }

@@ -11,16 +11,17 @@ import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
 import { searchPanel } from "./searchPanel";
 import { indentOnInput, bracketMatching } from "@codemirror/language";
-import { yapMarkdown } from "./markdownLang";
-import { yapLezerExtensions } from "./lezer";
+import { bulletmdMarkdown } from "./markdownLang";
+import { bulletmdLezerExtensions } from "./lezer";
 import { pluginGrammar } from "./lezer/pluginGrammar";
 import { pluginExtensions } from "./pluginExtensions";
-import { yapTheme, yapHighlighting } from "./theme";
+import { bulletmdTheme, bulletmdHighlighting } from "./theme";
 import { livePreview, documentDirectory } from "./livePreview";
 import { linkHandling } from "./linkHandler";
 import { markdownShortcuts } from "./markdownShortcuts";
 import { imagePaste } from "./imagePaste";
 import { blockNavigation } from "./blockNavigation";
+import { baselineGrid } from "./baselineGrid";
 
 /**
  * Holds the `documentDirectory` facet so it can be reconfigured in place when an
@@ -60,10 +61,11 @@ export function createEditor(opts: EditorOptions): EditorView {
       search({ createPanel: searchPanel }),
       EditorState.allowMultipleSelections.of(true),
       EditorView.lineWrapping,
+      baselineGrid,
       // Built-in grammar (math, footnotes) plus any plugin-contributed Lezer
       // extensions collected before this editor was created.
-      yapMarkdown([...yapLezerExtensions, ...pluginGrammar()]),
-      yapHighlighting,
+      bulletmdMarkdown([...bulletmdLezerExtensions, ...pluginGrammar()]),
+      bulletmdHighlighting,
       documentDirCompartment.of(documentDirectory.of(opts.documentDir ?? "")),
       livePreview(),
       linkHandling,
@@ -75,13 +77,13 @@ export function createEditor(opts: EditorOptions): EditorView {
       // Escape blurs the editor; a blurred editor renders every block as a clean
       // preview (see the focus watcher in livePreview).
       keymap.of([{ key: "Escape", run: (view) => (view.contentDOM.blur(), true) }]),
-      yapTheme,
+      bulletmdTheme,
       // Raw CM6 extensions contributed by enabled plugins, collected before the
       // editor was built.
       ...pluginExtensions(),
       ...(opts.extensions ?? []),
       // Defaults last: earlier extensions win precedence ties, and the markdown
-      // keymap (Enter/Backspace) is installed by `yapMarkdown` above.
+      // keymap (Enter/Backspace) is installed by `bulletmdMarkdown` above.
       keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap]),
       listener,
     ],

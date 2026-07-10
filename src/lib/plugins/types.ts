@@ -1,7 +1,7 @@
-//! The `yap` object handed to a plugin's `activate(yap)`. This is the whole
+//! The `bulletmd` object handed to a plugin's `activate(bulletmd)`. This is the whole
 //! public API surface (v1). It is deliberately a single injected object -- there
 //! is no import-resolution magic -- so the app's own CodeMirror module instances
-//! ride along on `yap.cm` and plugins build extensions against those rather than
+//! ride along on `bulletmd.cm` and plugins build extensions against those rather than
 //! importing (and duplicating) `@codemirror/*` themselves.
 
 import type { Command } from "../commands/registry.svelte";
@@ -11,7 +11,7 @@ import type { Extension } from "@codemirror/state";
 import type { Facet } from "@codemirror/state";
 import type { StatusItem } from "./surfaces.svelte";
 
-export interface YapApi {
+export interface BulletmdApi {
   /** The app's own CodeMirror / Lezer module instances. */
   cm: {
     state: typeof import("@codemirror/state");
@@ -31,7 +31,7 @@ export interface YapApi {
   /** Contribute a Lezer `MarkdownConfig` extension. Takes effect on reload. */
   markdown: { extendGrammar(ext: MarkdownExtension): void };
   /** Contribute a raw CM6 extension (keymap, view plugin, facet), built against
-   *  `yap.cm.*`. Takes effect on reload. */
+   *  `bulletmd.cm.*`. Takes effect on reload. */
   editor: {
     registerExtension(ext: Extension): void;
     /** The open document's directory, for resolving document-relative assets. */
@@ -46,16 +46,40 @@ export interface YapApi {
     get(): Promise<Record<string, unknown>>;
     set(data: Record<string, unknown>): Promise<void>;
   };
-  /** Render markdown using yap's own clipboard-export renderer, then open the
+  /** Render markdown using bulletmd's own clipboard-export renderer, then open the
    *  native print dialog for the complete rendered document. */
   export: {
     markdownToHtml(markdown: string): string;
-    printHtml(html: string, options?: { title?: string; css?: string }): Promise<void>;
+    printHtml(
+      html: string,
+      options?: {
+        title?: string;
+        css?: string;
+        snapImagesToGrid?: number;
+        layoutWidth?: string;
+        blockInset?: number;
+      },
+    ): Promise<void>;
     printMarkdown(
       markdown: string,
       documentDir: string,
-      options?: { title?: string; css?: string; renderLine?: (line: string) => string | undefined },
+      options?: {
+        title?: string;
+        css?: string;
+        renderLine?: (line: string) => string | undefined;
+        snapImagesToGrid?: number;
+        layoutWidth?: string;
+        blockInset?: number;
+      },
     ): Promise<void>;
+  };
+  /** Native file dialogs for plugin-generated artifacts. */
+  dialogs: {
+    save(options?: {
+      title?: string;
+      defaultPath?: string;
+      filters?: { name: string; extensions: string[] }[];
+    }): Promise<string | null>;
   };
   /** Narrow, named escape hatches for system access. Generic file IO plus named,
    *  task-specific commands are exposed instead of a blanket shell capability. */
@@ -70,10 +94,17 @@ export interface YapApi {
     spellCheck(words: string[], lang: string): Promise<string[]>;
     /** Suggested corrections for a single `word`. */
     spellSuggest(word: string, lang: string): Promise<string[]>;
+    /** Export Markdown through the named, allowlisted `marp` executable. */
+    marpExport(
+      markdown: string,
+      output: string,
+      documentDir: string,
+      allowLocalFiles: boolean,
+    ): Promise<void>;
   };
 }
 
 /** What a plugin's entry module must export. */
 export interface PluginModule {
-  activate(yap: YapApi): void | Promise<void>;
+  activate(bulletmd: BulletmdApi): void | Promise<void>;
 }

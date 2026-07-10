@@ -6,7 +6,7 @@ import { tags as t } from "@lezer/highlight";
  * Chrome-level theme. Colors are always `var(--x)` so a system light/dark flip
  * repaints without reconfiguring the editor.
  */
-export const yapTheme = EditorView.theme({
+export const bulletmdTheme = EditorView.theme({
   "&": {
     height: "100%",
     color: "var(--fg)",
@@ -50,24 +50,24 @@ export const yapTheme = EditorView.theme({
   ".cm-panels.cm-panels-bottom": {
     borderTop: "1px solid var(--border, var(--fg-faint))",
   },
-  ".yap-search": {
+  ".bulletmd-search": {
     fontFamily: "var(--font-prose)",
     padding: "7px 9px",
     display: "flex",
     flexDirection: "column",
     gap: "7px",
   },
-  ".yap-search-row": {
+  ".bulletmd-search-row": {
     display: "flex",
     alignItems: "center",
     gap: "6px",
   },
   // `display: flex` above would otherwise beat the UA `[hidden]` rule, keeping
   // the collapsed replace row visible.
-  ".yap-search-row[hidden]": {
+  ".bulletmd-search-row[hidden]": {
     display: "none",
   },
-  ".yap-search-field": {
+  ".bulletmd-search-field": {
     flex: "1",
     minWidth: "0",
     backgroundColor: "var(--bg)",
@@ -78,11 +78,11 @@ export const yapTheme = EditorView.theme({
     fontFamily: "inherit",
     fontSize: "0.9em",
   },
-  ".yap-search-field:focus": {
+  ".bulletmd-search-field:focus": {
     outline: "none",
     borderColor: "var(--accent)",
   },
-  ".yap-search-count": {
+  ".bulletmd-search-count": {
     fontSize: "0.8em",
     color: "var(--fg-dim)",
     minWidth: "3.5em",
@@ -90,7 +90,7 @@ export const yapTheme = EditorView.theme({
     fontVariantNumeric: "tabular-nums",
   },
   // Icon buttons: up/down navigation, replace-expand caret, and close.
-  ".yap-search-icon": {
+  ".bulletmd-search-icon": {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -105,30 +105,30 @@ export const yapTheme = EditorView.theme({
     cursor: "pointer",
     padding: "0",
   },
-  ".yap-search-icon:hover": {
+  ".bulletmd-search-icon:hover": {
     backgroundColor: "var(--selection-blur)",
   },
-  ".yap-search-expand": {
+  ".bulletmd-search-expand": {
     transition: "transform 120ms ease, color 120ms ease",
   },
-  ".yap-search-expand.expanded": {
+  ".bulletmd-search-expand.expanded": {
     transform: "rotate(90deg)",
     color: "var(--accent)",
     borderColor: "var(--accent)",
   },
   // A deliberately large, borderless close cross.
-  ".yap-search-close": {
+  ".bulletmd-search-close": {
     width: "28px",
     height: "28px",
     fontSize: "1.25em",
     border: "none",
     color: "var(--fg-dim)",
   },
-  ".yap-search-close:hover": {
+  ".bulletmd-search-close:hover": {
     backgroundColor: "transparent",
     color: "var(--fg)",
   },
-  ".yap-search-toggle": {
+  ".bulletmd-search-toggle": {
     fontFamily: "inherit",
     fontSize: "0.78em",
     whiteSpace: "nowrap",
@@ -139,15 +139,15 @@ export const yapTheme = EditorView.theme({
     padding: "4px 9px",
     cursor: "pointer",
   },
-  ".yap-search-toggle:hover": {
+  ".bulletmd-search-toggle:hover": {
     backgroundColor: "var(--selection-blur)",
   },
-  ".yap-search-toggle.active": {
+  ".bulletmd-search-toggle.active": {
     backgroundColor: "var(--accent)",
     borderColor: "var(--accent)",
     color: "var(--bg)",
   },
-  ".yap-search-btn": {
+  ".bulletmd-search-btn": {
     fontFamily: "inherit",
     fontSize: "0.85em",
     background: "transparent",
@@ -157,7 +157,7 @@ export const yapTheme = EditorView.theme({
     padding: "4px 11px",
     cursor: "pointer",
   },
-  ".yap-search-btn:hover": {
+  ".bulletmd-search-btn:hover": {
     backgroundColor: "var(--selection-blur)",
   },
   ".cm-searchMatch": {
@@ -172,7 +172,7 @@ export const yapTheme = EditorView.theme({
  * Token styling. Applies in raw *and* rendered regions on purpose: revealing a
  * block should only make markup characters appear, never restyle its text.
  */
-export const yapHighlightStyle = HighlightStyle.define([
+export const bulletmdHighlightStyle = HighlightStyle.define([
   { tag: t.heading1, fontWeight: "700" },
   { tag: t.heading2, fontWeight: "700" },
   { tag: t.heading3, fontWeight: "600" },
@@ -198,4 +198,4 @@ export const yapHighlightStyle = HighlightStyle.define([
   { tag: t.definition(t.variableName), color: "var(--fg)" },
 ]);
 
-export const yapHighlighting = syntaxHighlighting(yapHighlightStyle);
+export const bulletmdHighlighting = syntaxHighlighting(bulletmdHighlightStyle);

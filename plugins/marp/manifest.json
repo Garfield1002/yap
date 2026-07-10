@@ -1,0 +1,6 @@
+{
+  "name": "Marp Slides",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "entry": "main.js"
+}

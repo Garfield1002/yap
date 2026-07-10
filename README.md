@@ -1,15 +1,18 @@
-# yap
+# bulletmd
 
-A native-feeling, live-preview markdown editor for the desktop. The block under
-your cursor shows raw markdown source; every other block renders rich — the
+A native-feeling digital bullet journal built on Markdown. A subtle dot-grid
+background gives notes the rhythm of paper and its opacity can be adjusted under
+Settings → Appearance.
+The block under your cursor shows raw markdown source; every other block renders rich — the
 Typora / Obsidian "live preview" model — with no mode switch and no separate
 preview pane.
 
 Built as a daily driver: plain markdown files on disk, atomic saves, a file
 watcher that reloads clean edits and prompts on conflicts, and a snappy launch.
 
-> **Status:** Linux is the supported platform today (packaged as `.rpm` and
-> AppImage). The stack is kept portable, but macOS and Windows are untested.
+> **Status:** Linux packages are available as `.deb`, `.rpm`, and AppImage.
+> macOS application and DMG bundles are configured but still need testing on
+> supported Apple hardware. Windows remains untested.
 
 ---
 
@@ -40,9 +43,9 @@ watcher that reloads clean edits and prompts on conflicts, and a snappy launch.
 - **Custom themed title bar** with native File / Edit / Settings menus, light and
   dark themes that follow the system (with a manual override), and Open Recent.
 - **Optional plugins** for features that do not belong in the core editor,
-  including spell check, PDF export, and Zotero citations.
-- **One window, one file.** `yap file.md` opens an editor; each file is its own
-  process, matching a window manager and a `%F` desktop entry.
+  including spell check, PDF export, Zotero citations, and live Marp slides.
+- **One window, one file.** `bulletmd file.md` opens an editor; each file is its own
+  process, matching a window manager and a `%f` desktop entry.
 
 ---
 
@@ -52,7 +55,8 @@ watcher that reloads clean edits and prompts on conflicts, and a snappy launch.
 
 - [Rust](https://rustup.rs/) toolchain (for the Tauri shell)
 - [Node.js](https://nodejs.org/) + npm (for the frontend)
-- Tauri's Linux system dependencies (WebKitGTK etc.) — see the
+- Tauri's platform prerequisites — WebKitGTK and related packages on Linux, or
+  Xcode command-line tools on macOS — see the
   [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 - [`just`](https://github.com/casey/just) for the task recipes (optional but
   assumed below)
@@ -61,7 +65,7 @@ watcher that reloads clean edits and prompts on conflicts, and a snappy launch.
 
 ```bash
 npm install                 # install frontend deps
-just run path/to/file.md    # build the binary, start Vite, and launch yap
+just run path/to/file.md    # build the binary, start Vite, and launch bulletmd
 just run                    # launch with a fresh untitled buffer
 ```
 
@@ -74,17 +78,50 @@ to come up, then launches the app against it.
 just install    # builds the frontend, then `cargo install` into ~/.cargo/bin
 ```
 
-After this, `yap file.md` works from anywhere.
+After this, `bulletmd file.md` works from anywhere.
 
-### Release bundle
+### Release bundles
 
 ```bash
-just bundle     # produces .rpm and AppImage under src-tauri/target/release/bundle
+just bundle          # bundles for the current platform
+just bundle-linux    # .deb, .rpm, and AppImage; run on Linux
+just bundle-macos    # bulletmd.app and .dmg; run on macOS
 ```
 
-Bundling registers `.md` / `.markdown` with the `text/markdown` MIME type and
-writes an `Exec=… %F` desktop entry, so files open one-process-per-file from the
-file manager.
+Bundles are written under `src-tauri/target/release/bundle/`. Install the
+`.deb` or `.rpm` to register bulletmd's application entry, icon, and `text/markdown`
+file association with Linux desktops such as KDE Plasma. The AppImage is
+portable but does not install a permanent application-menu entry by itself.
+
+On macOS, move `bulletmd.app` into Applications or install it from the DMG. Finder
+opens associated `.md` / `.markdown` documents through the native application
+event; bulletmd preserves its one-window, one-file behavior by launching a separate
+process for each additional document.
+
+The source-oriented `just install` recipe only places the CLI binary in
+`~/.cargo/bin`; use a release bundle when desktop application registration is
+required.
+
+### Release automation and macOS signing
+
+Pushing a `v*` tag or manually starting the **Release desktop bundles** GitHub
+Actions workflow builds Linux x86_64 packages plus Apple Silicon and Intel
+macOS bundles. It collects them in a draft GitHub release so the artifacts can
+be tested before publishing.
+
+macOS CI builds use an ad-hoc signature by default. For distributable Developer
+ID signing and notarization, configure these repository secrets:
+
+- `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`;
+- `APPLE_CERTIFICATE_PASSWORD`: password used when exporting that certificate;
+- `KEYCHAIN_PASSWORD`: throwaway password for the CI keychain;
+- `APPLE_ID`: Apple account email;
+- `APPLE_PASSWORD`: app-specific password for that account;
+- `APPLE_TEAM_ID`: Apple Developer team identifier.
+
+When the certificate is present, the workflow imports it and Tauri signs the
+bundles. When all three Apple account values are also present, Tauri submits the
+signed application for notarization and staples the result.
 
 ---
 
@@ -92,8 +129,8 @@ file manager.
 
 | Action | How |
 | --- | --- |
-| Open a file | `yap file.md`, or File → Open |
-| New untitled buffer | `yap` with no argument, or File → New |
+| Open a file | `bulletmd file.md`, or File → Open |
+| New untitled buffer | `bulletmd` with no argument, or File → New |
 | New window | File → New Window (spawns a separate process) |
 | Save | `Ctrl/Cmd+S` (untitled buffers prompt for a location) |
 | Bold / italic / inline code | `Ctrl/Cmd+B` / `I` / `E` |
@@ -107,7 +144,7 @@ file manager.
 
 ### Pasting images
 
-Pasting an image from the clipboard writes it to `assets/` under `$YAP_HOME`
+Pasting an image from the clipboard writes it to `assets/` under `$BULLETMD_HOME`
 (see below) and inserts an `![](/absolute/path)` reference at the cursor. The
 image renders immediately in live preview.
 
@@ -119,20 +156,20 @@ the markdown is not self-contained if you move it to another machine.
 
 ## Configuration
 
-yap keeps a small `state.json` (recent files, theme override) and the pasted-
+bulletmd keeps a small `state.json` (recent files and appearance preferences) and the pasted-
 image `assets/` directory under its **config home**:
 
-1. `$YAP_HOME`, if set and non-empty;
-2. otherwise `$XDG_CONFIG_HOME/yap` (or `~/.config/yap`).
+1. `$BULLETMD_HOME`, if set and non-empty;
+2. otherwise `$XDG_CONFIG_HOME/bulletmd` (or `~/.config/bulletmd`).
 
-Set `YAP_HOME` to relocate everything yap persists:
+Set `BULLETMD_HOME` to relocate everything bulletmd persists:
 
 ```bash
-export YAP_HOME="$HOME/notes/.yap"
+export BULLETMD_HOME="$HOME/notes/.bulletmd"
 ```
 
 > **Note:** pasted images render through Tauri's asset protocol, whose scope is
-> `$HOME/**` (`src-tauri/tauri.conf.json`). If you point `YAP_HOME` outside your
+> `$HOME/**` (`src-tauri/tauri.conf.json`). If you point `BULLETMD_HOME` outside your
 > home directory, pasted images will save but won't display until that scope is
 > widened.
 
@@ -140,11 +177,11 @@ export YAP_HOME="$HOME/notes/.yap"
 
 Plugins are optional feature packages: a folder containing a `manifest.json`, a
 JavaScript entry point, and any CSS or data the feature needs. They run as
-trusted code inside yap, so install only plugins you wrote or reviewed.
+trusted code inside bulletmd, so install only plugins you wrote or reviewed.
 
 To install one, open **Settings → Plugins → Install Plugin…** and choose the
-plugin folder — the folder that directly contains `manifest.json`. yap copies
-it into `$YAP_HOME/plugins/` (or `~/.config/yap/plugins/` by default); enable or
+plugin folder — the folder that directly contains `manifest.json`. bulletmd copies
+it into `$BULLETMD_HOME/plugins/` (or `~/.config/bulletmd/plugins/` by default); enable or
 disable installed plugins from the same menu. To update a plugin, replace its
 installed folder and re-enable it.
 
@@ -174,7 +211,7 @@ verify the endpoint after enabling it:
 curl -i http://127.0.0.1:23119/api/
 ```
 
-The plugin uses yap's native HTTP client because Zotero's Local API does not
+The plugin uses bulletmd's native HTTP client because Zotero's Local API does not
 grant browser CORS access. It uses a Better BibTeX
 `Citation Key:` value from an item's **Extra** field when present; otherwise it
 inserts Zotero's eight-character item key. See
@@ -185,7 +222,7 @@ for the preference and endpoint details.
 
 ## Architecture
 
-yap is a [Tauri 2](https://tauri.app/) app: a Rust shell around a WebKit webview
+bulletmd is a [Tauri 2](https://tauri.app/) app: a Rust shell around a WebKit webview
 running a [Svelte 5](https://svelte.dev/) + TypeScript frontend built with Vite.
 The editing core is [CodeMirror 6](https://codemirror.dev/); markdown is parsed
 in-process by [Lezer](https://lezer.codemirror.net/)

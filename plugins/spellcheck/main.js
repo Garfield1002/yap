@@ -3,27 +3,33 @@
 // code, math, and URLs), a suggestion UI, settings, and a system dependency.
 //
 // The engine is a Rust command (spellbook, reading the system Hunspell dicts),
-// reached through yap.system.spellCheck / spellSuggest. Checking is debounced
+// reached through bulletmd.system.spellCheck / spellSuggest. Checking is debounced
 // and runs off the keystroke path: misspelling underlines arrive after the fact.
 //
-// Settings live in this plugin's data.json (hand-edited in v1):
-//   { "lang": "en_US" }
+// Settings live in this plugin's data.json. The language is hand-edited in v1;
+// words added from the suggestion popup are persisted automatically:
+//   { "lang": "en_US", "words": ["bulletmd"] }
 
-export async function activate(yap) {
-  const { StateField, StateEffect, RangeSetBuilder } = yap.cm.state;
-  const { Decoration, EditorView, ViewPlugin } = yap.cm.view;
-  const { syntaxTree } = yap.cm.language;
+export async function activate(bulletmd) {
+  const { StateField, StateEffect, RangeSetBuilder } = bulletmd.cm.state;
+  const { Decoration, EditorView, ViewPlugin } = bulletmd.cm.view;
+  const { syntaxTree } = bulletmd.cm.language;
 
   // --- settings -------------------------------------------------------------
-  const settings = await yap.settings.get();
-  const languages = await yap.system.spellLanguages();
+  const settings = await bulletmd.settings.get();
+  const languages = await bulletmd.system.spellLanguages();
   const lang =
     (typeof settings.lang === "string" && settings.lang) ||
     (languages.includes("en_US") ? "en_US" : languages[0]);
+  const customWords = new Set(
+    Array.isArray(settings.words)
+      ? settings.words.filter((word) => typeof word === "string" && word.length > 0)
+      : [],
+  );
 
   if (!lang) {
     // No dictionaries installed; nothing to do but say so.
-    yap.statusBar.addItem({ id: "spell", text: "spell: no dictionary" });
+    bulletmd.statusBar.addItem({ id: "spell", text: "spell: no dictionary" });
     return;
   }
 
@@ -31,7 +37,7 @@ export async function activate(yap) {
   // The misspelling set is replaced wholesale by an effect the async checker
   // dispatches, and mapped through edits in between so underlines track text.
   const setMisspellings = StateEffect.define();
-  const underline = Decoration.mark({ class: "yap-misspelled" });
+  const underline = Decoration.mark({ class: "bulletmd-misspelled" });
 
   const field = StateField.define({
     create: () => Decoration.none,
@@ -92,10 +98,16 @@ export async function activate(yap) {
       view.dispatch({ effects: setMisspellings.of([]) });
       return;
     }
-    const unique = [...new Set(words.map((w) => w.word))];
+    const unique = [...new Set(words.map((w) => w.word))].filter(
+      (word) => !customWords.has(word),
+    );
+    if (unique.length === 0) {
+      view.dispatch({ effects: setMisspellings.of([]) });
+      return;
+    }
     let bad;
     try {
-      bad = new Set(await yap.system.spellCheck(unique, lang));
+      bad = new Set(await bulletmd.system.spellCheck(unique, lang));
     } catch {
       return; // engine unavailable this round; leave the last result in place
     }
@@ -151,11 +163,18 @@ export async function activate(yap) {
     if (popup && !popup.contains(e.target)) closePopup();
   }
 
+  async function addToDictionary(word, view) {
+    const words = [...customWords, word].sort((a, b) => a.localeCompare(b));
+    await bulletmd.settings.set({ ...settings, words });
+    customWords.add(word);
+    await recheck(view);
+  }
+
   async function openSuggestions(view, range) {
     const word = view.state.doc.sliceString(range.from, range.to);
     let suggestions = [];
     try {
-      suggestions = await yap.system.spellSuggest(word, lang);
+      suggestions = await bulletmd.system.spellSuggest(word, lang);
     } catch {
       /* leave empty */
     }
@@ -164,20 +183,20 @@ export async function activate(yap) {
     const coords = view.coordsAtPos(range.from);
     if (!coords) return;
     popup = document.createElement("div");
-    popup.className = "yap-spell-popup";
+    popup.className = "bulletmd-spell-popup";
     popup.style.left = `${coords.left}px`;
     popup.style.top = `${coords.bottom + 2}px`;
 
     if (suggestions.length === 0) {
       const none = document.createElement("div");
-      none.className = "yap-spell-none";
+      none.className = "bulletmd-spell-none";
       none.textContent = "No suggestions";
       popup.appendChild(none);
     } else {
       for (const s of suggestions.slice(0, 8)) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "yap-spell-item";
+        btn.className = "bulletmd-spell-item";
         btn.textContent = s;
         btn.addEventListener("click", () => {
           view.dispatch({ changes: { from: range.from, to: range.to, insert: s } });
@@ -187,6 +206,24 @@ export async function activate(yap) {
         popup.appendChild(btn);
       }
     }
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "bulletmd-spell-item bulletmd-spell-add";
+    add.textContent = `Add “${word}” to dictionary`;
+    add.addEventListener("click", async () => {
+      add.disabled = true;
+      try {
+        await addToDictionary(word, view);
+        closePopup();
+        view.focus();
+      } catch {
+        add.disabled = false;
+        add.textContent = "Could not add word";
+      }
+    });
+    popup.appendChild(add);
+
     document.body.appendChild(popup);
     // Defer so this same click doesn't immediately dismiss it.
     setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
@@ -212,11 +249,11 @@ export async function activate(yap) {
   });
 
   // --- wire in --------------------------------------------------------------
-  yap.editor.registerExtension([field, checker, suggestHandler]);
+  bulletmd.editor.registerExtension([field, checker, suggestHandler]);
 
-  yap.statusBar.addItem({ id: "spell", text: `spell: ${lang}`, title: "Spell check active" });
+  bulletmd.statusBar.addItem({ id: "spell", text: `spell: ${lang}`, title: "Spell check active" });
 
-  yap.commands.register({
+  bulletmd.commands.register({
     id: "spellcheck.suggest",
     title: "Spell Check: Suggest at Cursor",
     keybinding: "Mod+.",

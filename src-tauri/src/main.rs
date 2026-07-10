@@ -12,13 +12,13 @@ fn main() {
     } else {
         arg.map(|a| resolve(PathBuf::from(a)))
     };
-    yap_lib::run(initial_path, start_untitled)
+    bulletmd_lib::run(initial_path, start_untitled)
 }
 
 /// Resolve the CLI argument against the working directory *before* Tauri starts,
 /// because the webview process does not inherit a meaningful cwd.
 ///
-/// `canonicalize` fails on a path that does not exist yet, and `yap new.md`
+/// `canonicalize` fails on a path that does not exist yet, and `bulletmd new.md`
 /// must still work, so fall back to the merely-absolute form.
 fn resolve(path: PathBuf) -> PathBuf {
     let absolute = if path.is_absolute() {

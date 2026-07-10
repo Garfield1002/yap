@@ -1,7 +1,7 @@
 import type { SyntaxNode, SyntaxNodeRef } from "@lezer/common";
 import type { EditorState } from "@codemirror/state";
 import type { Builder } from "../builder";
-import { MathWidget } from "../widgets/MathWidget";
+import { MathWidget, renderedMathHeight } from "../widgets/MathWidget";
 import { slabLines, dimMarks } from "./block";
 
 /** The tex between the delimiters. Handles an unterminated block (one mark). */
@@ -39,6 +39,17 @@ export function math(node: SyntaxNodeRef, b: Builder): boolean | void {
       const doc = b.state.doc;
       slabLines(b, doc.lineAt(node.from).number, doc.lineAt(node.to).number);
       dimMarks(b, block, "MathMark");
+      const previous = renderedMathHeight(texOf(block, b.state));
+      if (previous) {
+        const first = doc.lineAt(node.from).number;
+        const last = doc.lineAt(node.to).number;
+        const sourceRows = last - first + 1;
+        const lastLine = doc.line(last);
+        b.lineAttributes(lastLine.from, {
+          class: "cm-math-source-active",
+          style: `min-height: ${24 + Math.max(0, previous - sourceRows * 24)}px; box-sizing: border-box;`,
+        });
+      }
       return false;
     }
 

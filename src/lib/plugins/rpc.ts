@@ -7,15 +7,16 @@ export interface PluginInfo {
   name: string;
   version: string;
   api_version: number;
+  requires: string[];
   source: string;
   css: string;
   error: string | null;
 }
 
-/** Discover every plugin under `$YAP_HOME/plugins/`. */
+/** Discover every plugin under bulletmd's config-home `plugins/` directory. */
 export const listPlugins = () => invoke<PluginInfo[]>("list_plugins");
 
-/** Copy the plugin folder at `source` into `$YAP_HOME/plugins/`; returns its id
+/** Copy the plugin folder at `source` into bulletmd's config-home `plugins/`; returns its id
  *  (the folder name). Rejects a source without a valid manifest, or a clobber. */
 export const installPlugin = (source: string) => invoke<string>("install_plugin", { source });
 
@@ -37,3 +38,11 @@ export const spellCheck = (words: string[], lang: string) =>
 
 export const spellSuggest = (word: string, lang: string) =>
   invoke<string[]>("spell_suggest", { word, lang });
+
+/** Export an in-memory Markdown deck through the allowlisted Marp CLI. */
+export const marpExport = (
+  markdown: string,
+  output: string,
+  documentDir: string,
+  allowLocalFiles: boolean,
+) => invoke<void>("marp_export", { markdown, output, documentDir, allowLocalFiles });

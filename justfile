@@ -1,11 +1,11 @@
 _default:
     @just --list
 
-# Open FILE in yap. With no FILE, yap shows its file picker.
+# Open FILE in bulletmd. With no FILE, bulletmd starts an untitled document.
 run FILE="": build
     #!/usr/bin/env bash
     set -euo pipefail
-    npm run dev > /tmp/yap-vite.log 2>&1 &
+    npm run dev > /tmp/bulletmd-vite.log 2>&1 &
     vite_pid=$!
     # Only ever kill the server this recipe started.
     trap 'kill "$vite_pid" 2>/dev/null || true' EXIT
@@ -16,14 +16,14 @@ run FILE="": build
         sleep 0.1
     done
     if [[ "$ready" -ne 1 ]]; then
-        echo "vite never came up; see /tmp/yap-vite.log" >&2
+        echo "vite never came up; see /tmp/bulletmd-vite.log" >&2
         exit 1
     fi
 
     if [[ -n "{{ FILE }}" ]]; then
-        ./src-tauri/target/debug/yap "{{ FILE }}"
+        ./src-tauri/target/debug/bulletmd "{{ FILE }}"
     else
-        ./src-tauri/target/debug/yap
+        ./src-tauri/target/debug/bulletmd
     fi
 
 # Compile the Rust binary that `run` launches.
@@ -40,11 +40,19 @@ test:
 typecheck:
     npx svelte-check --tsconfig ./tsconfig.json
 
-# Release bundle (.rpm, AppImage).
+# Release bundles for the current platform.
 bundle:
     npm run tauri build
 
-# Install the yap binary into ~/.cargo/bin.
+# Linux packages. Installing the .deb or .rpm registers bulletmd with the desktop.
+bundle-linux:
+    npm run tauri build -- --bundles deb,rpm,appimage
+
+# macOS application bundle and drag-to-Applications installer (run on a Mac).
+bundle-macos:
+    npm run tauri build -- --bundles app,dmg
+
+# Install the bulletmd binary into ~/.cargo/bin.
 install:
     # tauri-build embeds dist/ into the binary, so the frontend has to exist first.
     npm run build

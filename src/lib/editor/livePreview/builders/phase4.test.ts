@@ -9,7 +9,7 @@ import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 // constructs the widget. Mirrors phase3's tauri stub.
 vi.mock("katex", () => ({ default: { renderToString: () => "" } }));
 
-const { yapLezerExtensions } = await import("../../lezer");
+const { bulletmdLezerExtensions } = await import("../../lezer");
 const { buildDecorations } = await import("../buildDecorations");
 const { MathWidget } = await import("../widgets/MathWidget");
 
@@ -17,7 +17,7 @@ function mkState(doc: string, cursor: number) {
   const state = EditorState.create({
     doc,
     selection: EditorSelection.cursor(Math.min(cursor, doc.length)),
-    extensions: [markdown({ base: markdownLanguage, extensions: yapLezerExtensions })],
+    extensions: [markdown({ base: markdownLanguage, extensions: bulletmdLezerExtensions })],
   });
   // Loop until the parse really completes: `ensureSyntaxTree` returns null when
   // it runs out of budget, which under the parallel suite's CPU load happens

@@ -5,7 +5,7 @@ as `[@doe2024]` at the cursor.
 
 Enable Zotero's **Settings → Advanced → Allow other applications on this
 computer to communicate with Zotero** setting, then install this folder from
-yap's **Settings → Plugins** menu. The Local API is read-only and stays on the
+bulletmd's **Settings → Plugins** menu. The Local API is read-only and stays on the
 loopback interface.
 
 Use **Zotero: Insert Citation…** from the command palette, the Plugins menu,

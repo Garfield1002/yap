@@ -9,7 +9,7 @@ import type { MarkdownExtension } from "@lezer/markdown";
  *
  * `extensions` is where the custom Lezer parsers (math, footnotes) plug in.
  */
-export function yapMarkdown(extensions: MarkdownExtension[] = []) {
+export function bulletmdMarkdown(extensions: MarkdownExtension[] = []) {
   return markdown({
     base: markdownLanguage,
     codeLanguages: languages,

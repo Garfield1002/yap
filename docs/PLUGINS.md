@@ -1,4 +1,4 @@
-# yap plugin system — design record
+# bulletmd plugin system — design record
 
 Decisions resolved 2026-07-09. This is the agreed design for the plugin
 system, recorded before implementation. Format mirrors `PLAN.md`: each
@@ -9,7 +9,7 @@ argue with the reasons, not just the conclusions.
 
 ## Goal & posture
 
-Plugins exist **first for yap's own author** — a way to add features
+Plugins exist **first for bulletmd's own author** — a way to add features
 (spell check, exports, Zotero, Marp) without bloating core — while keeping
 a public ecosystem *possible* later. That ordering drives every trust and
 stability call below:
@@ -17,7 +17,7 @@ stability call below:
 - **Plugins are trusted code.** No sandboxing; they run in the app's
   webview with the app's privileges. You wrote or reviewed them.
 - **The API is explicitly unstable.** `manifest.json` carries
-  `apiVersion: 1`; yap warns/refuses to load on a mismatch. This one field
+  `apiVersion: 1`; bulletmd warns/refuses to load on a mismatch. This one field
   is the cheap seam that makes a stable v2 possible without archaeology —
   old plugins fail *cleanly* after a break instead of mysteriously.
 - Per-plugin permissions, a settings UI, and API docs are all deferred
@@ -31,9 +31,9 @@ PDF export, Zotero connector (citations), Marp (slides).
 ## What a plugin is on disk
 
 ```
-$YAP_HOME/plugins/<name>/
+$BULLETMD_HOME/plugins/<name>/
   manifest.json    # { name, version, apiVersion, entry }
-  main.js          # single ESM bundle, exports activate(yap)
+  main.js          # single ESM bundle, exports activate(bulletmd)
   data.json        # per-plugin settings (optional, hand-edited in v1)
   *.css            # optional styles, injected as <style>
 ```
@@ -41,14 +41,14 @@ $YAP_HOME/plugins/<name>/
 - Authored in TypeScript, bundled with esbuild, with `@codemirror/*`
   marked **external** — plugins must never carry their own copy of the
   CodeMirror packages (see *API surface*).
-- Entry point is `activate(yap)`. No `deactivate` contract in v1;
+- Entry point is `activate(bulletmd)`. No `deactivate` contract in v1;
   unloading is per-registration teardown driven by the loader.
 - Settings live in the plugin's own `data.json`, read/written through a
-  `yap.settings` API. Core `state.json` stays core-only (except the
+  `bulletmd.settings` API. Core `state.json` stays core-only (except the
   enabled-plugins list). No settings UI in v1 — that's its own feature.
 
 Rejected: single-file plugins (no home for CSS/assets/versioning) and
-npm `package.json` (drags npm semantics yap won't honor).
+npm `package.json` (drags npm semantics bulletmd won't honor).
 
 ---
 
@@ -62,7 +62,7 @@ rejected for the same reason.
 
 Load mechanics:
 
-1. A Rust command reads the plugin source from `$YAP_HOME/plugins/`
+1. A Rust command reads the plugin source from `$BULLETMD_HOME/plugins/`
    (the frontend still never touches the filesystem directly).
 2. The frontend evaluates it via
    `import(URL.createObjectURL(new Blob([src], { type: "text/javascript" })))`.
@@ -88,24 +88,24 @@ effect on reload (acceptable — toggling is rare, see *Editor hooks*).
 
 ## API surface
 
-`activate(yap)` receives one injected object; there is no import
+`activate(bulletmd)` receives one injected object; there is no import
 resolution magic. Two copies of `@codemirror/state` silently break
 extension compatibility, so the app's own module instances ride on the
 API object:
 
-- `yap.cm.state`, `yap.cm.view`, `yap.cm.language`, … — the app's
+- `bulletmd.cm.state`, `bulletmd.cm.view`, `bulletmd.cm.language`, … — the app's
   CodeMirror modules. Plugins build raw CM6 extensions against these.
-- `yap.commands.register({ id, title, run, keybinding? })` — one shared
+- `bulletmd.commands.register({ id, title, run, keybinding? })` — one shared
   command registry feeding palette, menus, and keybindings uniformly.
-- `yap.menus.addItem(...)`, `yap.statusBar.addItem(...)` — UI surfaces.
-- `yap.livePreview.registerBuilder(nodeNames, builder)` — join the
+- `bulletmd.menus.addItem(...)`, `bulletmd.statusBar.addItem(...)` — UI surfaces.
+- `bulletmd.livePreview.registerBuilder(nodeNames, builder)` — join the
   decoration pipeline in `livePreview/decorationField.ts`, same contract
   as the built-in `builders/`.
-- `yap.markdown.extendGrammar(markdownConfig)` — contribute Lezer
+- `bulletmd.markdown.extendGrammar(markdownConfig)` — contribute Lezer
   `MarkdownConfig` extensions (like the existing math/footnote ones).
-- `yap.settings.get()/set()` — the plugin's `data.json`.
-- Escape hatches (see below): `yap.system.fetch`, `yap.system.readFile`,
-  `yap.system.writeFile`, plus named task-specific commands.
+- `bulletmd.settings.get()/set()` — the plugin's `data.json`.
+- Escape hatches (see below): `bulletmd.system.fetch`, `bulletmd.system.readFile`,
+  `bulletmd.system.writeFile`, plus named task-specific commands.
 
 Builder and grammar registrations are **collected before `createEditor`
 runs** — the Lezer parser is fixed at construction and the decoration
@@ -116,7 +116,7 @@ while the author is the only customer; the raw-CM6 + hooks split matches
 Obsidian's proven shape.
 
 **System access** is a small set of generic *trusted* Tauri commands exposed
-through `yap.system`: native `fetch(url)` (Zotero's local HTTP API), scoped
+through `bulletmd.system`: native `fetch(url)` (Zotero's local HTTP API), scoped
 file read/write (exports), and spawning **named, allowlisted binaries only**
 (e.g. `marp`) — no generic `shell(anything)`. The fetch client runs outside the
 webview, so Zotero's browser CORS policy does not apply; Tauri capabilities
@@ -170,7 +170,7 @@ Dependency-respecting sequence; each step is usable on its own:
 2. **Command registry + palette + keybinding layer.** Core feature,
    plugin-agnostic.
 3. **Plugin loader.** Discovery, manifest + apiVersion check, blob
-   import, the `yap` API object, per-plugin registration tracking,
+   import, the `bulletmd` API object, per-plugin registration tracking,
    error isolation, Settings → Plugins toggle UX.
 4. **Editor hook points.** Thread collected builders and grammar
    extensions into `createEditor` / `decorationField`.

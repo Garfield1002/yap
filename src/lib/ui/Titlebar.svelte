@@ -3,6 +3,8 @@
   import { basename, fileState } from "../persistence/fileStore.svelte";
   import type { Menu as MenuModel } from "./menu";
   import Menu from "./Menu.svelte";
+  import lightLogo from "../../../assets/logo_white.svg?url";
+  import darkLogo from "../../../assets/logo_black.svg?url";
 
   let {
     menus,
@@ -46,6 +48,10 @@
 <!-- data-tauri-drag-region only on the non-interactive centre, so the menu and
      window buttons stay clickable. -->
 <header class="titlebar">
+  <div class="brand" aria-hidden="true">
+    <img class="logo logo-light" src={lightLogo} alt="" />
+    <img class="logo logo-dark" src={darkLogo} alt="" />
+  </div>
   <nav class="menus">
     {#each menus as menu (menu.id)}
       <div class="menu-slot">
@@ -105,6 +111,34 @@
     display: flex;
     align-items: stretch;
     padding-left: 0.15rem;
+  }
+  .brand {
+    flex: 0 0 34px;
+    display: grid;
+    place-items: center;
+  }
+  .logo {
+    grid-area: 1 / 1;
+    width: 20px;
+    height: 20px;
+    display: block;
+  }
+  .logo-dark {
+    display: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme="light"])) .logo-light {
+      display: none;
+    }
+    :global(:root:not([data-theme="light"])) .logo-dark {
+      display: block;
+    }
+  }
+  :global(:root[data-theme="dark"]) .logo-light {
+    display: none;
+  }
+  :global(:root[data-theme="dark"]) .logo-dark {
+    display: block;
   }
   .menu-slot {
     position: relative;

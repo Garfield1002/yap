@@ -1,24 +1,25 @@
-.yap-page-break-gap {
+.bulletmd-page-break-gap {
   position: relative;
   box-sizing: border-box;
   width: 100%;
   min-height: 0;
   color: var(--fg-dim, #6e7781);
+  background: var(--bg, #f7f7f5);
 }
 
-.yap-page-break-gap::before {
+.bulletmd-page-break-gap::before {
   position: absolute;
-  top: var(--yap-page-end, 0px);
+  top: var(--bulletmd-page-end, 0px);
   right: 0;
   left: 0;
   content: "";
   border-top: 1px dotted var(--border, #d8dee4);
 }
 
-.yap-page-break-title {
+.bulletmd-page-break-title {
   position: relative;
   display: block;
-  top: calc(var(--yap-page-end, 0px) + 0.35rem);
+  top: calc(var(--bulletmd-page-end, 0px) + 0.35rem);
   padding: 0 0.5rem;
   background: var(--bg, #fff);
   font-size: 0.75rem;
@@ -27,11 +28,12 @@
   text-transform: uppercase;
 }
 
-.yap-page-break-directive {
+.bulletmd-page-break-directive {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
+  padding: 0 0.4rem;
   color: var(--fg-dim, #6e7781);
   background: var(--bg-subtle, #f6f8fa);
   font-family: var(--font-mono, monospace);
   font-size: 0.9em;
+  line-height: 24px;
 }

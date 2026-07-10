@@ -56,7 +56,7 @@ async function imageFromClipboard(): Promise<Blob | null> {
 }
 
 /**
- * Paste an image from the clipboard: write the bytes into `YAP_HOME/assets/` and
+ * Paste an image from the clipboard: write the bytes into `BULLETMD_HOME/assets/` and
  * drop an `![](absolute/path)` reference at the cursor. Non-image pastes fall
  * through to CodeMirror's default text handling untouched.
  *

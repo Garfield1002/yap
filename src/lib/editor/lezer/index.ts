@@ -5,5 +5,5 @@ import { footnoteExtension } from "./footnotes";
 export { mathExtension } from "./math";
 export { footnoteExtension } from "./footnotes";
 
-/** Every custom Lezer parser yap plugs into `@codemirror/lang-markdown`. */
-export const yapLezerExtensions: MarkdownExtension[] = [mathExtension, footnoteExtension];
+/** Every custom Lezer parser bulletmd plugs into `@codemirror/lang-markdown`. */
+export const bulletmdLezerExtensions: MarkdownExtension[] = [mathExtension, footnoteExtension];

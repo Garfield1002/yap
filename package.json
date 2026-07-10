@@ -1,7 +1,7 @@
 {
-  "name": "yap",
+  "name": "bulletmd",
   "version": "0.1.0",
-  "description": "Native-feeling live-preview markdown editor",
+  "description": "A native-feeling digital bullet journal",
   "type": "module",
   "license": "MIT",
   "scripts": {

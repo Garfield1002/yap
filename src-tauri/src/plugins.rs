@@ -1,7 +1,7 @@
 //! Plugin discovery and per-plugin storage. The frontend never touches the
 //! filesystem: it asks here for the source it then evaluates in the webview.
 //!
-//! A plugin is a directory under `$YAP_HOME/plugins/<dir>/` holding:
+//! A plugin is a directory under bulletmd's config-home `plugins/<dir>/` holding:
 //!   manifest.json  { name, version, apiVersion, entry }
 //!   main.js        the ESM bundle (or whatever `entry` names)
 //!   *.css          optional styles, concatenated and returned
@@ -31,6 +31,8 @@ struct Manifest {
     api_version: u32,
     #[serde(default)]
     entry: Option<String>,
+    #[serde(default)]
+    requires: Vec<String>,
 }
 
 /// One discovered plugin, ready for the frontend to evaluate (or to show as
@@ -42,6 +44,8 @@ pub struct PluginInfo {
     name: String,
     version: String,
     api_version: u32,
+    /// Plugin directory ids that must activate before this plugin.
+    requires: Vec<String>,
     /// The entry module's source; empty when `error` is set.
     source: String,
     /// All `*.css` in the directory, concatenated.
@@ -56,6 +60,7 @@ fn broken(dir: &str, error: String) -> PluginInfo {
         name: dir.to_owned(),
         version: String::new(),
         api_version: 0,
+        requires: Vec::new(),
         source: String::new(),
         css: String::new(),
         error: Some(error),
@@ -79,7 +84,10 @@ fn read_css(dir: &Path) -> String {
 }
 
 fn load_one(dir: &Path) -> PluginInfo {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
     let manifest_path = dir.join("manifest.json");
     let manifest: Manifest = match fs::read_to_string(&manifest_path) {
@@ -101,13 +109,14 @@ fn load_one(dir: &Path) -> PluginInfo {
         name: manifest.name,
         version: manifest.version,
         api_version: manifest.api_version,
+        requires: manifest.requires,
         source,
         css: read_css(dir),
         error: None,
     }
 }
 
-/// Discover every plugin under `$YAP_HOME/plugins/`. A missing directory is not
+/// Discover every plugin under the config-home `plugins/`. A missing directory is not
 /// an error -- it just means no plugins are installed.
 #[tauri::command]
 pub fn list_plugins() -> Vec<PluginInfo> {
@@ -160,7 +169,7 @@ fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 /// Install a plugin by copying a folder (the one the user picked) into
-/// `$YAP_HOME/plugins/`. The source must contain a valid `manifest.json`; the
+/// the config-home `plugins/`. The source must contain a valid `manifest.json`; the
 /// folder's own name becomes the plugin id. Returns that id so the frontend can
 /// enable the freshly installed plugin. Refuses to clobber an existing install.
 #[tauri::command]
@@ -168,8 +177,8 @@ pub fn install_plugin(source: String) -> Result<String, String> {
     let src = PathBuf::from(&source);
 
     let manifest = src.join("manifest.json");
-    let text = fs::read_to_string(&manifest)
-        .map_err(|e| format!("no manifest.json in {source}: {e}"))?;
+    let text =
+        fs::read_to_string(&manifest).map_err(|e| format!("no manifest.json in {source}: {e}"))?;
     serde_json::from_str::<Manifest>(&text).map_err(|e| format!("invalid manifest.json: {e}"))?;
 
     let name = src
@@ -178,7 +187,9 @@ pub fn install_plugin(source: String) -> Result<String, String> {
         .ok_or_else(|| "cannot determine a folder name to install as".to_owned())?;
     let dest = plugin_dir(name)?;
     if dest.exists() {
-        return Err(format!("'{name}' is already installed; disable and remove it first"));
+        return Err(format!(
+            "'{name}' is already installed; disable and remove it first"
+        ));
     }
 
     copy_dir(&src, &dest).map_err(|e| format!("copying into {}: {e}", dest.display()))?;
@@ -255,7 +266,11 @@ mod tests {
     fn a_missing_entry_file_is_an_error() {
         let root = tempfile::tempdir().unwrap();
         let p = make(root.path(), "noentry");
-        fs::write(p.join("manifest.json"), r#"{ "name": "N", "apiVersion": 1 }"#).unwrap();
+        fs::write(
+            p.join("manifest.json"),
+            r#"{ "name": "N", "apiVersion": 1 }"#,
+        )
+        .unwrap();
 
         assert!(load_one(&p).error.is_some());
     }

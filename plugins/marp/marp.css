@@ -1,0 +1,73 @@
+/* WYSIWYG Marp writing surface: 16:9 canvases separated inside the normal
+   CodeMirror document, following the same model as PDF Export's A4 mode. */
+.cm-editor.bulletmd-marp-slide-mode .cm-scroller {
+  background: var(--bg-subtle, #f6f8fa);
+  padding: 1.5rem 0;
+}
+
+.cm-editor.bulletmd-marp-slide-mode .cm-content {
+  --bulletmd-marp-slide-gap: 28px;
+  width: 960px;
+  max-width: calc(100% - 3rem);
+  min-height: var(--bulletmd-marp-slide-height, 540px);
+  margin: 0 auto;
+  padding: var(--baseline-content-pad-top, 30px) 48px 48px !important;
+  box-sizing: border-box;
+  position: relative;
+  color: var(--fg, #171717);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--bg, #fff) 0,
+    var(--bg, #fff) var(--bulletmd-marp-slide-height, 540px),
+    transparent var(--bulletmd-marp-slide-height, 540px),
+    transparent calc(var(--bulletmd-marp-slide-height, 540px) + var(--bulletmd-marp-slide-gap))
+  );
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--fg, #000) 16%, transparent);
+}
+
+.cm-editor.bulletmd-marp-slide-mode .cm-content::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  color: var(--fg, #171717);
+  opacity: var(--dot-opacity, 12%);
+  background-image: var(--bulletmd-marp-dot-pattern, none);
+  background-size: 24px var(--bulletmd-marp-page-stride, 568px);
+}
+
+.cm-editor.bulletmd-marp-slide-mode .cm-line,
+.cm-editor.bulletmd-marp-slide-mode .cm-image,
+.cm-editor.bulletmd-marp-slide-mode .bulletmd-zotero-bibliography,
+.cm-editor.bulletmd-marp-slide-mode .cm-block-line {
+  position: relative;
+  z-index: 1;
+}
+
+.bulletmd-marp-slide-gap {
+  width: 100%;
+  min-height: 0;
+  background: var(--bg-subtle, #efefeb);
+}
+
+.cm-editor.bulletmd-marp-slide-mode .cm-line.bulletmd-marp-separator,
+.cm-editor.bulletmd-marp-slide-mode .cm-line.bulletmd-marp-frontmatter {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.cm-editor.bulletmd-marp-slide-mode .cm-line.bulletmd-marp-source-active {
+  height: auto;
+  min-height: 24px;
+  overflow: visible;
+  padding: 0 2px;
+  color: var(--fg-dim, #6e7781);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  line-height: 24px;
+}

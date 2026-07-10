@@ -1,7 +1,7 @@
 /**
  * A small, dependency-free markdown to HTML converter for the Edit > Copy HTML
  * action. It is deliberately not a full CommonMark implementation: it covers
- * the constructs yap renders (headings, emphasis, code, links, images, lists,
+ * the constructs bulletmd renders (headings, emphasis, code, links, images, lists,
  * quotes, rules) well enough to paste into an email or a doc. Math and
  * footnotes fall through as their literal source, which is acceptable on the
  * clipboard.

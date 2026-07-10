@@ -1,4 +1,4 @@
-# yap — plan and decision record
+# bulletmd — plan and decision record
 
 A desktop markdown editor where the block under the cursor shows raw markdown
 source and every other block renders rich (the Typora/Obsidian "live preview"
@@ -21,7 +21,7 @@ model). Built to be a daily driver.
 | Typography | One proportional font raw and rendered; monospace only for code |
 | Keys | Standard + markdown shortcuts (Ctrl+B/I/K, Tab list indent); no vim in v1 |
 | Persistence | Debounced autosave (~1s) + atomic write (Rust), file watcher w/ clean auto-reload, dirty conflict prompt |
-| Windows | One window = one file; `yap file.md` CLI; separate process per file; open dialog when bare |
+| Windows | One window = one file; `bulletmd file.md` CLI; separate process per file; open dialog when bare |
 | Theme | Light + dark, follow system, CSS variables from day one |
 
 Explicitly **out of scope for v1**: rendered tables, wiki-links, callouts,
@@ -100,7 +100,7 @@ Two traps, both guarded by tests:
 
 - `main.rs`: resolve `argv[1]` against the cwd **before** Tauri starts (the
   webview process has no meaningful cwd), stash in `AppState`. `canonicalize` is
-  allowed to fail so `yap new.md` opens an empty buffer that saves into place.
+  allowed to fail so `bulletmd new.md` opens an empty buffer that saves into place.
   No single-instance plugin — one process per file.
 - `write_file_atomic`: `NamedTempFile::new_in(parent_dir)` → write → `sync_all`
   → `persist()`. Same-directory temp is non-negotiable: `rename(2)` is only
@@ -216,9 +216,9 @@ the editor; `attachPersistence` / `detachPersistence` bind or drop autosave +
 watcher in place (via a `documentDirectory` compartment) so Save-as, Rename, and
 Delete keep the undo history and cursor. Open replaces the current window.
 
-Recent files and the theme override persist as `state.json` under
-`$YAP_HOME`, else the XDG config dir + `yap` (`config.rs`). The theme override
-is a `data-theme` attribute on the root that beats the system `prefers-color-scheme`
+Recent files and appearance preferences persist as `state.json` under
+`$BULLETMD_HOME`, else the XDG config dir + `bulletmd` (`config.rs`). The theme
+override is a `data-theme` attribute on the root that beats the system `prefers-color-scheme`
 (the dark palette is written twice in `global.css`, once per selector); the text
 selection colour is derived from `--accent` with `color-mix`, so it tracks the
 theme automatically. Copy HTML uses a small dependency-free markdown converter

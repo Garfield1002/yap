@@ -11,6 +11,18 @@ type Katex = typeof import("katex")["default"];
 
 let katex: Katex | null = null;
 let loading: Promise<void> | null = null;
+const GRID = 24;
+const renderedHeights = new Map<string, number>();
+const observers = new WeakMap<HTMLElement, ResizeObserver>();
+
+function widgetKey(tex: string): string {
+  return `D ${tex}`;
+}
+
+/** Last stable display allocation, used while block-math source is active. */
+export function renderedMathHeight(tex: string): number | undefined {
+  return renderedHeights.get(widgetKey(tex));
+}
 
 function ensureKatex(): Promise<void> {
   if (katex) return Promise.resolve();
@@ -66,23 +78,80 @@ export class MathWidget extends WidgetType {
     return other.tex === this.tex && other.displayMode === this.displayMode;
   }
 
+  get estimatedHeight(): number {
+    return this.displayMode ? renderedHeights.get(widgetKey(this.tex)) ?? GRID * 3 : -1;
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement(this.displayMode ? "div" : "span");
-    wrap.className = this.displayMode ? "cm-math cm-math-block" : "cm-math cm-math-inline";
+    wrap.className = this.displayMode ? "cm-math cm-math-block-grid" : "cm-math cm-math-inline";
+    const surface = this.displayMode ? document.createElement("div") : wrap;
+    const content = this.displayMode ? document.createElement("div") : wrap;
+    if (this.displayMode) {
+      wrap.style.position = "relative";
+      wrap.style.boxSizing = "border-box";
+      surface.className = "cm-math-block";
+      surface.style.position = "absolute";
+      surface.style.top = "var(--baseline-block-inset, 18px)";
+      surface.style.right = "0";
+      surface.style.left = "0";
+      content.className = "cm-math-block-content";
+      surface.style.boxSizing = "border-box";
+      surface.style.overflowX = "auto";
+      surface.style.overflowY = "hidden";
+      surface.style.background = "var(--bg)";
+      const knownHeight = renderedHeights.get(widgetKey(this.tex));
+      if (knownHeight) {
+        wrap.style.height = `${knownHeight}px`;
+        surface.style.height = `${Math.max(GRID, knownHeight - GRID)}px`;
+      }
+      surface.append(content);
+      wrap.append(surface);
+    }
 
     if (katex) {
-      wrap.innerHTML = render(this.tex, this.displayMode);
+      content.innerHTML = render(this.tex, this.displayMode);
     } else {
       // Show the source until KaTeX arrives; then swap it in and, for block
       // math, ask the view to re-measure the height that just changed.
-      wrap.textContent = this.tex;
+      content.textContent = this.tex;
       void ensureKatex().then(() => {
-        wrap.innerHTML = render(this.tex, this.displayMode);
+        content.innerHTML = render(this.tex, this.displayMode);
         if (this.displayMode) view.requestMeasure();
       });
     }
 
+    if (this.displayMode) {
+      let applied = 0;
+      const observer = new ResizeObserver(() => {
+        const style = getComputedStyle(surface);
+        const chrome =
+          Number.parseFloat(style.paddingTop) +
+          Number.parseFloat(style.paddingBottom) +
+          Number.parseFloat(style.borderTopWidth) +
+          Number.parseFloat(style.borderBottomWidth);
+        const visibleHeight = Math.max(
+          GRID,
+          Math.ceil((content.scrollHeight + chrome) / GRID) * GRID,
+        );
+        if (visibleHeight === applied) return;
+        applied = visibleHeight;
+        const allocationHeight = visibleHeight + GRID;
+        wrap.style.height = `${allocationHeight}px`;
+        surface.style.height = `${visibleHeight}px`;
+        renderedHeights.set(widgetKey(this.tex), allocationHeight);
+        view.requestMeasure();
+      });
+      observer.observe(content);
+      observers.set(wrap, observer);
+    }
+
     return wrap;
+  }
+
+  destroy(dom: HTMLElement): void {
+    observers.get(dom)?.disconnect();
+    observers.delete(dom);
   }
 
   ignoreEvent(): boolean {

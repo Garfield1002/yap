@@ -17,6 +17,7 @@ import * as langMarkdown from "@codemirror/lang-markdown";
 import * as lezerMarkdown from "@lezer/markdown";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fetch as nativeFetch } from "@tauri-apps/plugin-http";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import { registerCommand } from "../commands/registry.svelte";
 import { registerBuilder } from "../editor/livePreview/pluginBuilders";
@@ -38,9 +39,10 @@ import {
   spellLanguages,
   spellCheck,
   spellSuggest,
+  marpExport,
   type PluginInfo,
 } from "./rpc";
-import type { YapApi, PluginModule } from "./types";
+import type { BulletmdApi, PluginModule } from "./types";
 
 /** The API contract version. A plugin whose manifest names a different one is
  *  refused with a clear error rather than loaded into a break. */
@@ -70,11 +72,20 @@ function runDisposers(disposers: (() => void)[]): void {
 
 /** Print a complete static document in a same-origin frame. CodeMirror only
  *  mounts the viewport, so printing the live editor would silently omit pages. */
-function printHtml(html: string, options: { title?: string; css?: string } = {}): Promise<void> {
+function printHtml(
+  html: string,
+  options: {
+    title?: string;
+    css?: string;
+    snapImagesToGrid?: number;
+    layoutWidth?: string;
+    blockInset?: number;
+  } = {},
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const frame = document.createElement("iframe");
     frame.title = options.title ?? "Print document";
-    frame.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;";
+    frame.style.cssText = `position:fixed;left:-10000px;width:${options.layoutWidth ?? "1px"};height:1px;opacity:0;pointer-events:none;`;
     document.body.appendChild(frame);
 
     const cleanup = () => frame.remove();
@@ -99,6 +110,42 @@ function printHtml(html: string, options: { title?: string; css?: string } = {})
               }),
           ),
         ).then(() => {
+          const grid = options.snapImagesToGrid;
+          if (grid && grid > 0) {
+            const inset = options.blockInset ?? 18;
+            const wrapGridBlock = (element: HTMLElement, visibleHeight: number) => {
+              const allocation = printDocument.createElement("div");
+              const surface = printDocument.createElement("div");
+              allocation.className = "bulletmd-print-grid-block";
+              surface.className = "bulletmd-print-grid-surface";
+              allocation.style.height = `${visibleHeight + grid}px`;
+              surface.style.top = `${inset}px`;
+              surface.style.height = `${visibleHeight}px`;
+              element.replaceWith(allocation);
+              surface.appendChild(element);
+              allocation.appendChild(surface);
+            };
+
+            for (const image of Array.from(printDocument.images)) {
+              if (!image.naturalWidth || !image.naturalHeight) continue;
+              const ratio = image.naturalWidth / image.naturalHeight;
+              const rendered = image.getBoundingClientRect().height;
+              const height = Math.max(grid, Math.floor(rendered / grid) * grid);
+              image.style.maxWidth = "none";
+              image.style.width = `${height * ratio}px`;
+              image.style.height = `${height}px`;
+              wrapGridBlock(image, height);
+            }
+
+            for (const display of Array.from(
+              printDocument.querySelectorAll<HTMLElement>(".katex-display"),
+            )) {
+              display.style.margin = "0";
+              const rendered = display.getBoundingClientRect().height;
+              const height = Math.max(grid, Math.ceil(rendered / grid) * grid);
+              wrapGridBlock(display, height);
+            }
+          }
           printWindow.addEventListener("afterprint", cleanup, { once: true });
           printWindow.print();
           // Some WebKit print paths do not issue afterprint for a cancelled dialog.
@@ -109,7 +156,7 @@ function printHtml(html: string, options: { title?: string; css?: string } = {})
       { once: true },
     );
     printDocument.open();
-    printDocument.write(`<!doctype html><html><head><meta charset="utf-8"><title>${options.title ?? "yap document"}</title><style>${options.css ?? ""}</style></head><body>${html}</body></html>`);
+    printDocument.write(`<!doctype html><html><head><meta charset="utf-8"><title>${options.title ?? "bulletmd document"}</title><style>${options.css ?? ""}</style></head><body>${html}</body></html>`);
     printDocument.close();
   });
 }
@@ -119,7 +166,14 @@ function printHtml(html: string, options: { title?: string; css?: string } = {})
 async function printMarkdown(
   markdown: string,
   dir: string,
-  options: { title?: string; css?: string; renderLine?: (line: string) => string | undefined } = {},
+  options: {
+    title?: string;
+    css?: string;
+    renderLine?: (line: string) => string | undefined;
+    snapImagesToGrid?: number;
+    layoutWidth?: string;
+    blockInset?: number;
+  } = {},
 ): Promise<void> {
   const [{ default: katex }, { default: katexCss }] = await Promise.all([
     import("katex"),
@@ -138,9 +192,9 @@ async function printMarkdown(
   return printHtml(html, { ...options, css: `${katexCss}\n${options.css ?? ""}` });
 }
 
-/** Build the `yap` object for one plugin. Every registration is pushed onto
+/** Build the `bulletmd` object for one plugin. Every registration is pushed onto
  *  `disposers` so disabling the plugin fully reverses it. */
-function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
+function makeApi(info: PluginInfo, disposers: (() => void)[]): BulletmdApi {
   const track = (dispose: () => void) => disposers.push(dispose);
   return {
     cm: {
@@ -168,6 +222,7 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
       set: (data) => writePluginData(info.dir, JSON.stringify(data, null, 2)),
     },
     export: { markdownToHtml, printHtml, printMarkdown },
+    dialogs: { save: saveDialog },
     system: {
       // Zotero rejects browser origins. Tauri's native HTTP plugin performs the
       // request outside the webview; an empty Origin asks its unsafe-header
@@ -185,19 +240,20 @@ function makeApi(info: PluginInfo, disposers: (() => void)[]): YapApi {
       spellLanguages,
       spellCheck,
       spellSuggest,
+      marpExport,
     },
   };
 }
 
 /** Evaluate a plugin's ESM source from a blob URL and call its `activate`. */
-async function evaluate(info: PluginInfo, yap: YapApi): Promise<void> {
+async function evaluate(info: PluginInfo, bulletmd: BulletmdApi): Promise<void> {
   const url = URL.createObjectURL(new Blob([info.source], { type: "text/javascript" }));
   try {
     const mod = (await import(/* @vite-ignore */ url)) as Partial<PluginModule>;
     if (typeof mod.activate !== "function") {
-      throw new Error("entry module does not export activate(yap)");
+      throw new Error("entry module does not export activate(bulletmd)");
     }
-    await mod.activate(yap);
+    await mod.activate(bulletmd);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -205,14 +261,29 @@ async function evaluate(info: PluginInfo, yap: YapApi): Promise<void> {
 
 /** Load a single plugin. Any failure disables just this plugin and records the
  *  error; every registration made before the failure is rolled back. */
-async function activate(info: PluginInfo): Promise<void> {
+async function activate(
+  info: PluginInfo,
+  available: PluginInfo[],
+  ancestors: string[] = [],
+): Promise<void> {
   if (loaded.has(info.dir) || activating.has(info.dir)) return;
   activating.add(info.dir);
   const disposers: (() => void)[] = [];
   try {
     if (info.error) throw new Error(info.error);
     if (info.api_version !== API_VERSION) {
-      throw new Error(`plugin targets API v${info.api_version}; yap provides v${API_VERSION}`);
+      throw new Error(`plugin targets API v${info.api_version}; bulletmd provides v${API_VERSION}`);
+    }
+    for (const requiredDir of info.requires ?? []) {
+      if (ancestors.includes(requiredDir) || requiredDir === info.dir) {
+        throw new Error(`plugin dependency cycle: ${[...ancestors, info.dir, requiredDir].join(" → ")}`);
+      }
+      const required = available.find((candidate) => candidate.dir === requiredDir);
+      if (!required) throw new Error(`required plugin '${requiredDir}' is not installed`);
+      await activate(required, available, [...ancestors, info.dir]);
+      if (!loaded.has(requiredDir)) {
+        throw new Error(`required plugin '${requiredDir}' failed to load`);
+      }
     }
 
     if (info.css.trim()) {
@@ -240,8 +311,9 @@ async function activate(info: PluginInfo): Promise<void> {
 /** Discover all plugins and activate the ones in `enabled`. */
 export async function loadEnabledPlugins(enabled: string[]): Promise<void> {
   const set = new Set(enabled);
-  for (const info of await listPlugins()) {
-    if (set.has(info.dir)) await activate(info);
+  const available = await listPlugins();
+  for (const info of available) {
+    if (set.has(info.dir)) await activate(info, available);
   }
 }
 
@@ -260,8 +332,9 @@ export function unloadPlugin(dir: string): void {
 /** Enable a plugin that is currently off: discover it fresh and activate it. */
 export async function loadPlugin(dir: string): Promise<void> {
   if (loaded.has(dir)) return;
-  const info = (await listPlugins()).find((p) => p.dir === dir);
-  if (info) await activate(info);
+  const available = await listPlugins();
+  const info = available.find((p) => p.dir === dir);
+  if (info) await activate(info, available);
 }
 
 export function isLoaded(dir: string): boolean {

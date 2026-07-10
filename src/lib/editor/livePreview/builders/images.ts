@@ -1,7 +1,7 @@
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { Builder } from "../builder";
 import { documentDirectory } from "../context";
-import { ImageWidget } from "../widgets/ImageWidget";
+import { ImageWidget, renderedImageHeight } from "../widgets/ImageWidget";
 
 /**
  * `![alt](src)` becomes the picture.
@@ -26,6 +26,18 @@ export function images(node: SyntaxNodeRef, b: Builder): boolean | void {
     .find((m) => m !== open && b.state.doc.sliceString(m.from, m.to) === "]");
   const alt = open && altEnd ? b.state.doc.sliceString(open.to, altEnd.from) : "";
 
-  b.replace(image.from, image.to, new ImageWidget(src, alt, b.state.facet(documentDirectory)));
+  const directory = b.state.facet(documentDirectory);
+  if (b.isRaw(image.from, image.to)) {
+    const reserved = renderedImageHeight(src, directory);
+    if (reserved) {
+      b.lineAttributes(image.from, {
+        class: "cm-image-source-active",
+        style: `min-height: ${reserved}px; box-sizing: border-box;`,
+      });
+    }
+    return false;
+  }
+
+  b.replace(image.from, image.to, new ImageWidget(src, alt, directory));
   return false;
 }

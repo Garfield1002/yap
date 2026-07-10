@@ -20,6 +20,10 @@ pub const FILE_CHANGED: &str = "file-changed";
 pub struct AppState {
     /// The file named on the command line, if any. One window, one file.
     pub initial_path: Mutex<Option<PathBuf>>,
+    /// Set when the frontend asks which file it should open. On macOS, Finder
+    /// may deliver a document through `RunEvent::Opened` during startup, so an
+    /// unclaimed initial path can still be filled by that event.
+    pub initial_file_claimed: Mutex<bool>,
     /// Launched with `--new`: open an untitled buffer instead of the picker.
     pub start_untitled: Mutex<bool>,
     /// Holding the watcher keeps the watch alive; dropping it ends the thread.
@@ -43,12 +47,38 @@ fn mtime_ms(path: &Path) -> f64 {
 
 #[tauri::command]
 pub fn get_initial_file(state: State<AppState>) -> Option<String> {
+    *state.initial_file_claimed.lock().ok()? = true;
     state
         .initial_path
         .lock()
         .ok()?
-        .as_ref()
+        .take()
         .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Give a platform file-open event to this process if the frontend has not yet
+/// selected its initial document. Once claimed, later documents must open in a
+/// separate process to preserve bulletmd's one-file-per-process model.
+#[cfg(any(target_os = "macos", test))]
+pub fn set_unclaimed_initial_file(state: &AppState, path: PathBuf) -> Result<(), PathBuf> {
+    let Ok(claimed) = state.initial_file_claimed.lock() else {
+        return Err(path);
+    };
+    if *claimed {
+        return Err(path);
+    }
+
+    // Keep the claimed guard until the path is stored. `get_initial_file`
+    // takes the locks in the same order, so it cannot observe an empty slot
+    // between this check and assignment.
+    let Ok(mut initial_path) = state.initial_path.lock() else {
+        return Err(path);
+    };
+    if initial_path.is_some() {
+        return Err(path);
+    }
+    *initial_path = Some(path);
+    Ok(())
 }
 
 /// Whether this process was launched with `--new`, so the frontend opens a
@@ -73,7 +103,7 @@ pub fn rename_file(from: String, to: String) -> Result<(), String> {
     fs::rename(&from, &to).map_err(|e| format!("{from} -> {to}: {e}"))
 }
 
-/// Reads the file. A path that does not exist yet is not an error: `yap new.md`
+/// Reads the file. A path that does not exist yet is not an error: `bulletmd new.md`
 /// should open an empty buffer that saves into place.
 #[tauri::command]
 pub fn read_file(path: String) -> Result<FileContents, String> {
@@ -127,7 +157,7 @@ pub fn write_file_atomic(path: String, contents: String) -> Result<f64, String> 
     Ok(mtime_ms(&target))
 }
 
-/// Save clipboard image bytes into `YAP_HOME/assets/` and return the absolute
+/// Save clipboard image bytes into `BULLETMD_HOME/assets/` and return the absolute
 /// path to the written file. Pasting the same image twice writes two files --
 /// the millisecond timestamp keeps names unique without hashing the bytes.
 ///
@@ -240,5 +270,36 @@ mod tests {
         let contents = read_file(path).unwrap();
         assert_eq!(contents.text, "round trip");
         assert!(contents.mtime_ms > 0.0);
+    }
+
+    #[test]
+    fn platform_open_can_supply_an_unclaimed_initial_file() {
+        let state = AppState::default();
+        let path = PathBuf::from("note.md");
+
+        assert_eq!(set_unclaimed_initial_file(&state, path.clone()), Ok(()));
+        assert_eq!(*state.initial_path.lock().unwrap(), Some(path));
+    }
+
+    #[test]
+    fn platform_open_does_not_replace_a_claimed_or_existing_file() {
+        let claimed = AppState {
+            initial_file_claimed: Mutex::new(true),
+            ..AppState::default()
+        };
+        let path = PathBuf::from("second.md");
+        assert_eq!(
+            set_unclaimed_initial_file(&claimed, path.clone()),
+            Err(path.clone())
+        );
+
+        let existing = AppState {
+            initial_path: Mutex::new(Some(PathBuf::from("first.md"))),
+            ..AppState::default()
+        };
+        assert_eq!(
+            set_unclaimed_initial_file(&existing, path.clone()),
+            Err(path)
+        );
     }
 }

@@ -8,10 +8,11 @@ export interface FileContents {
 export interface AppConfig {
   recent: string[];
   theme: string | null;
+  dot_opacity: number;
   plugins_enabled: string[];
 }
 
-/** The path named on the command line, or null when yap was launched bare. */
+/** The path named on the command line, or null when bulletmd was launched bare. */
 export const getInitialFile = () => invoke<string | null>("get_initial_file");
 
 /** True when launched with `--new` (File > New Window): open an untitled buffer. */
@@ -29,7 +30,7 @@ export const renameFile = (from: string, to: string) => invoke<void>("rename_fil
 
 export const startWatch = (path: string) => invoke<void>("start_watch", { path });
 
-/** Save clipboard image bytes under YAP_HOME/assets; returns the absolute path. */
+/** Save clipboard image bytes under BULLETMD_HOME/assets; returns the absolute path. */
 export const savePastedImage = (bytes: number[], ext: string) =>
   invoke<string>("save_pasted_image", { bytes, ext });
 
@@ -37,6 +38,10 @@ export const getConfig = () => invoke<AppConfig>("get_config");
 
 /** Persist the theme override; `null` follows the system. */
 export const setThemeSetting = (theme: string | null) => invoke<void>("set_theme", { theme });
+
+/** Persist the dot grid opacity, expressed as a fraction from 0 to 0.30. */
+export const setDotOpacitySetting = (opacity: number) =>
+  invoke<void>("set_dot_opacity", { opacity });
 
 export const recordRecent = (path: string) => invoke<void>("record_recent", { path });
 

@@ -1,20 +1,24 @@
-//! Persistent app state: the recent-files list and the theme override.
+//! Persistent app state: recent files and appearance preferences.
 //!
-//! Stored as `state.json` under yap's config home. That home is `$YAP_HOME`
-//! when set, else the XDG config dir (`$XDG_CONFIG_HOME` or `~/.config`) plus
-//! `yap`. Every read and write goes straight to the file -- the state is tiny
-//! and touched rarely (only when the open document changes or the theme flips),
+//! Stored as `state.json` under bulletmd's config home. That home is
+//! `$BULLETMD_HOME` when set, else the XDG config dir (`$XDG_CONFIG_HOME` or
+//! `~/.config`) plus `bulletmd`.
+//! Every read and write goes straight to the file -- the state is tiny
+//! and touched rarely (only when the open document or a preference changes),
 //! so there is no in-memory cache to keep coherent.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
 /// How many recent files to remember.
 const RECENT_MAX: usize = 12;
+static CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     /// Most-recently-opened first. May contain paths that no longer exist;
     /// callers filter when it matters (e.g. building the Open Recent menu).
@@ -23,16 +27,47 @@ pub struct AppConfig {
     /// `"light"` or `"dark"` to override the system, or `None` to follow it.
     #[serde(default)]
     pub theme: Option<String>,
+    /// Opacity of the bullet-journal dot grid, from fully hidden to 30%.
+    #[serde(
+        default = "default_dot_opacity",
+        deserialize_with = "deserialize_dot_opacity"
+    )]
+    pub dot_opacity: f32,
     /// Directory names of the plugins the user has enabled. This is the only
     /// plugin state core owns; everything else lives in each plugin's data.json.
     #[serde(default)]
     pub plugins_enabled: Vec<String>,
 }
 
-/// The directory yap keeps its state in. `$YAP_HOME` wins; otherwise the
-/// standard XDG config location.
+const fn default_dot_opacity() -> f32 {
+    0.12
+}
+
+fn clamp_dot_opacity(value: f32) -> f32 {
+    value.clamp(0.0, 0.30)
+}
+
+fn deserialize_dot_opacity<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    f32::deserialize(deserializer).map(clamp_dot_opacity)
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            recent: Vec::new(),
+            theme: None,
+            dot_opacity: default_dot_opacity(),
+            plugins_enabled: Vec::new(),
+        }
+    }
+}
+
+/// The directory bulletmd keeps its state in.
 pub fn config_home() -> PathBuf {
-    if let Ok(home) = std::env::var("YAP_HOME") {
+    if let Ok(home) = std::env::var("BULLETMD_HOME") {
         if !home.is_empty() {
             return PathBuf::from(home);
         }
@@ -41,9 +76,13 @@ pub fn config_home() -> PathBuf {
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config")))
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(".config"))
+        })
         .unwrap_or_else(|| PathBuf::from(".config"));
-    base.join("yap")
+    base.join("bulletmd")
 }
 
 fn state_path(dir: &Path) -> PathBuf {
@@ -64,7 +103,20 @@ pub fn load_from(dir: &Path) -> AppConfig {
 pub fn save_to(dir: &Path, config: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let text = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    fs::write(state_path(dir), text).map_err(|e| format!("{}: {e}", state_path(dir).display()))
+    let path = state_path(dir);
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    temporary
+        .write_all(text.as_bytes())
+        .map_err(|e| format!("{}: {e}", temporary.path().display()))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|e| format!("{}: {e}", temporary.path().display()))?;
+    temporary
+        .persist(&path)
+        .map_err(|e| format!("{}: {}", path.display(), e.error))?;
+    Ok(())
 }
 
 /// Move `path` to the front of the recent list, de-duplicating and capping.
@@ -82,35 +134,48 @@ pub fn save(config: &AppConfig) -> Result<(), String> {
     save_to(&config_home(), config)
 }
 
+fn lock_config() -> MutexGuard<'static, ()> {
+    CONFIG_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn update_config(change: impl FnOnce(&mut AppConfig)) -> Result<(), String> {
+    let _guard = lock_config();
+    let mut config = load();
+    change(&mut config);
+    save(&config)
+}
+
 // --- Tauri commands ---------------------------------------------------------
 
 #[tauri::command]
 pub fn get_config() -> AppConfig {
+    let _guard = lock_config();
     load()
 }
 
 #[tauri::command]
 pub fn set_theme(theme: Option<String>) -> Result<(), String> {
-    let mut config = load();
-    config.theme = theme;
-    save(&config)
+    update_config(|config| config.theme = theme)
+}
+
+#[tauri::command]
+pub fn set_dot_opacity(opacity: f32) -> Result<(), String> {
+    update_config(|config| config.dot_opacity = clamp_dot_opacity(opacity))
 }
 
 /// Remember `path` as the most recently opened file. The next File-menu popup
 /// rebuilds Open Recent from the config, so it picks this up automatically.
 #[tauri::command]
 pub fn record_recent(path: String) -> Result<(), String> {
-    let mut config = load();
-    push_recent(&mut config, &path);
-    save(&config)
+    update_config(|config| push_recent(config, &path))
 }
 
 /// Persist the set of enabled plugins (directory names).
 #[tauri::command]
 pub fn set_plugins_enabled(enabled: Vec<String>) -> Result<(), String> {
-    let mut config = load();
-    config.plugins_enabled = enabled;
-    save(&config)
+    update_config(|config| config.plugins_enabled = enabled)
 }
 
 #[cfg(test)]
@@ -122,12 +187,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut config = AppConfig::default();
         config.theme = Some("dark".into());
+        config.dot_opacity = 0.2;
         push_recent(&mut config, "/a.md");
 
         save_to(dir.path(), &config).unwrap();
         let loaded = load_from(dir.path());
 
         assert_eq!(loaded.theme.as_deref(), Some("dark"));
+        assert_eq!(loaded.dot_opacity, 0.2);
         assert_eq!(loaded.recent, vec!["/a.md"]);
     }
 
@@ -137,6 +204,7 @@ mod tests {
         let config = load_from(dir.path());
         assert!(config.recent.is_empty());
         assert!(config.theme.is_none());
+        assert_eq!(config.dot_opacity, 0.12);
     }
 
     #[test]
@@ -161,10 +229,24 @@ mod tests {
     }
 
     #[test]
-    fn config_home_prefers_yap_home() {
+    fn config_home_prefers_bulletmd_home() {
         // Env is process-global; this is the only test that touches it.
-        std::env::set_var("YAP_HOME", "/tmp/yap-test-home");
-        assert_eq!(config_home(), PathBuf::from("/tmp/yap-test-home"));
-        std::env::remove_var("YAP_HOME");
+        std::env::set_var("BULLETMD_HOME", "/tmp/bulletmd-test-home");
+        assert_eq!(config_home(), PathBuf::from("/tmp/bulletmd-test-home"));
+        std::env::remove_var("BULLETMD_HOME");
+    }
+
+    #[test]
+    fn state_without_dot_opacity_uses_the_default() {
+        let config: AppConfig = serde_json::from_str(r#"{"recent":[],"theme":null}"#).unwrap();
+        assert_eq!(config.dot_opacity, 0.12);
+    }
+
+    #[test]
+    fn dot_opacity_is_clamped_when_loading() {
+        let high: AppConfig = serde_json::from_str(r#"{"dot_opacity":0.8}"#).unwrap();
+        let low: AppConfig = serde_json::from_str(r#"{"dot_opacity":-0.2}"#).unwrap();
+        assert_eq!(high.dot_opacity, 0.30);
+        assert_eq!(low.dot_opacity, 0.0);
     }
 }

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=Office;Utility;
+Comment=Digital bullet journal for Markdown
+Exec=bulletmd %f
+StartupWMClass=bulletmd
+Icon=bulletmd
+Name=bulletmd
+Terminal=false
+Type=Application
+MimeType=text/markdown;

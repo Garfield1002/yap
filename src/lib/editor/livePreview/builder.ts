@@ -71,6 +71,16 @@ export class Builder {
     this.ranges.push(Decoration.line({ class: className }).range(start));
   }
 
+  /**
+   * Add inline line attributes for geometry that must survive a rendered/raw
+   * transition. Keep this narrow: callers may reserve a previous block height,
+   * while the line's own wrapped content is still free to grow beyond it.
+   */
+  lineAttributes(pos: number, attributes: Record<string, string>): void {
+    const start = this.state.doc.lineAt(pos).from;
+    this.ranges.push(Decoration.line({ attributes }).range(start));
+  }
+
   finish(): Decorations {
     // `Decoration.set(_, true)` sorts. A RangeSetBuilder would throw here:
     // nested constructs (bold inside a link inside a list) emit out of order.

@@ -18,8 +18,13 @@ plugin stays inactive.
 ## Use
 
 - Right-click an underlined word to choose a replacement.
+- Choose **Add “word” to dictionary** to accept it in your personal dictionary.
 - Run **Spell Check: Suggest at Cursor** from the command palette, or press
   `Ctrl/Cmd+.` while the cursor is on an underlined word.
+
+Words added to the personal dictionary are stored in this plugin's `data.json`
+and stop being underlined immediately. Entries remain specific to their
+capitalization, so adding a proper noun does not also accept its lowercase form.
 
 ## Configure the language
 
@@ -27,7 +32,7 @@ After installing, create or edit the plugin's `data.json` file and set the
 dictionary name exposed by your system:
 
 ```json
-{ "lang": "en_US" }
+{ "lang": "en_US", "words": ["bulletmd"] }
 ```
 
 Disable and re-enable the plugin after changing the setting.

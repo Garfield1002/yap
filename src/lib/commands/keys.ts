@@ -2,7 +2,7 @@
 //! palette accelerator hints.
 //!
 //! A chord is written "Mod+Shift+P": `Mod` is the platform command key (Ctrl
-//! everywhere yap runs today; Cmd if it is ever ported to macOS). Everything is
+//! everywhere bulletmd runs today; Cmd if it is ever ported to macOS). Everything is
 //! normalized to a canonical `mod+alt+shift+key` string so a written binding and
 //! a live event compare as plain strings.
 

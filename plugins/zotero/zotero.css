@@ -1,4 +1,4 @@
-.yap-zotero-overlay {
+.bulletmd-zotero-overlay {
   position: fixed;
   z-index: 1000;
   inset: 0;
@@ -8,7 +8,7 @@
   background: color-mix(in srgb, #000 32%, transparent);
 }
 
-.yap-zotero-dialog {
+.bulletmd-zotero-dialog {
   box-sizing: border-box;
   width: min(620px, calc(100vw - 32px));
   overflow: hidden;
@@ -18,7 +18,7 @@
   box-shadow: 0 18px 48px color-mix(in srgb, #000 28%, transparent);
 }
 
-.yap-zotero-query {
+.bulletmd-zotero-query {
   box-sizing: border-box;
   width: 100%;
   padding: 14px 16px;
@@ -30,12 +30,12 @@
   font: inherit;
 }
 
-.yap-zotero-results {
+.bulletmd-zotero-results {
   max-height: min(48vh, 420px);
   overflow: auto;
 }
 
-.yap-zotero-result {
+.bulletmd-zotero-result {
   display: flex;
   width: 100%;
   gap: 14px;
@@ -49,12 +49,12 @@
   text-align: left;
 }
 
-.yap-zotero-result:hover,
-.yap-zotero-result[data-selected="true"] {
+.bulletmd-zotero-result:hover,
+.bulletmd-zotero-result[data-selected="true"] {
   background: var(--selection, #dbeafe);
 }
 
-.yap-zotero-result-label {
+.bulletmd-zotero-result-label {
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -62,12 +62,12 @@
   white-space: nowrap;
 }
 
-.yap-zotero-result code {
+.bulletmd-zotero-result code {
   color: var(--muted, #656d76);
   font: 0.85em ui-monospace, monospace;
 }
 
-.yap-zotero-hint {
+.bulletmd-zotero-hint {
   margin: 0;
   padding: 10px 16px;
   border-top: 1px solid var(--border, #c8ccd0);
@@ -75,11 +75,11 @@
   font-size: 0.9em;
 }
 
-.yap-zotero-hint[data-kind="error"] {
+.bulletmd-zotero-hint[data-kind="error"] {
   color: #cf222e;
 }
 
-.yap-zotero-citation {
+.bulletmd-zotero-citation {
   appearance: none;
   border: 0;
   padding: 0;
@@ -92,17 +92,28 @@
   vertical-align: super;
 }
 
-.yap-zotero-citation:not(button) {
+.bulletmd-zotero-citation:not(button) {
   cursor: default;
 }
 
-.yap-zotero-bibliography {
-  margin: 1em 0;
+.bulletmd-zotero-bibliography {
+  box-sizing: border-box;
+  margin: 0;
   color: var(--fg, #1f2328);
   font-size: 0.92em;
-  line-height: 1.55;
+  line-height: 24px;
 }
 
-.yap-zotero-bibliography p {
-  margin: 0.35em 0;
+.bulletmd-zotero-bibliography-surface {
+  box-sizing: border-box;
+  background: var(--bg, #f7f7f5);
+}
+
+.bulletmd-zotero-bibliography-content {
+  min-height: 24px;
+}
+
+.bulletmd-zotero-bibliography p {
+  margin: 0;
+  line-height: 24px;
 }

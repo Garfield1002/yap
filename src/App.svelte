@@ -18,6 +18,7 @@
     renameFile,
     recordRecent,
     getConfig,
+    setDotOpacitySetting,
     newWindow,
   } from "./lib/persistence/api";
   import { Autosave } from "./lib/persistence/autosave";
@@ -51,6 +52,9 @@
   import StatusBar from "./lib/ui/StatusBar.svelte";
   import ConflictDialog from "./lib/ui/ConflictDialog.svelte";
   import UnsavedDialog from "./lib/ui/UnsavedDialog.svelte";
+  import AppearanceDialog from "./lib/ui/AppearanceDialog.svelte";
+  import StartupSplash from "./lib/ui/StartupSplash.svelte";
+  import { waitForBaselineCalibration } from "./lib/editor/baselineGrid";
 
   const MD_FILTERS = [{ name: "Markdown", extensions: ["md", "markdown", "mdx", "txt"] }];
   const AUTOSAVE_MS = 5000;
@@ -65,6 +69,12 @@
   let recent = $state<string[]>([]);
   /** Persisted theme override, so the Settings menu can tick the active one. */
   let themePref = $state<Theme | null>(null);
+  /** Visible dot strength; the baseline rhythm remains active even at zero. */
+  let dotOpacity = $state(0.12);
+  let appearanceOpen = $state(false);
+  let splashVisible = $state(true);
+  const splashStartedAt = performance.now();
+  let opacitySaveTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether the Ctrl+P command palette is showing. */
   let paletteOpen = $state(false);
   /** Enabled plugin directory names (persisted in state.json). */
@@ -295,6 +305,29 @@
     await setTheme(theme);
   }
 
+  function applyDotOpacity(opacity: number) {
+    dotOpacity = Math.min(0.3, Math.max(0, opacity));
+    document.documentElement.style.setProperty("--dot-opacity", `${dotOpacity * 100}%`);
+  }
+
+  function chooseDotOpacity(opacity: number) {
+    applyDotOpacity(opacity);
+    clearTimeout(opacitySaveTimer);
+    opacitySaveTimer = setTimeout(() => {
+      opacitySaveTimer = undefined;
+      void setDotOpacitySetting(dotOpacity);
+    }, 150);
+  }
+
+  function closeAppearance() {
+    appearanceOpen = false;
+    if (opacitySaveTimer) {
+      clearTimeout(opacitySaveTimer);
+      opacitySaveTimer = undefined;
+      void setDotOpacitySetting(dotOpacity);
+    }
+  }
+
   function openFind() {
     if (!view) return;
     openSearchPanel(view);
@@ -348,12 +381,53 @@
     view.focus();
   }
 
+  function withPluginRequirements(dirs: string[], available = discovered): string[] {
+    const expanded = new Set(dirs);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const plugin of available) {
+        if (!expanded.has(plugin.dir)) continue;
+        for (const required of plugin.requires ?? []) {
+          if (!expanded.has(required)) {
+            expanded.add(required);
+            changed = true;
+          }
+        }
+      }
+    }
+    return [...expanded];
+  }
+
+  function pluginDependents(dir: string): Set<string> {
+    const removing = new Set([dir]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const plugin of discovered) {
+        if (
+          !removing.has(plugin.dir) &&
+          (plugin.requires ?? []).some((required) => removing.has(required))
+        ) {
+          removing.add(plugin.dir);
+          changed = true;
+        }
+      }
+    }
+    return removing;
+  }
+
   async function togglePlugin(dir: string) {
     const on = enabledPlugins.includes(dir);
-    enabledPlugins = on ? enabledPlugins.filter((d) => d !== dir) : [...enabledPlugins, dir];
+    if (on) {
+      const removing = pluginDependents(dir);
+      enabledPlugins = enabledPlugins.filter((candidate) => !removing.has(candidate));
+      for (const candidate of removing) unloadPlugin(candidate);
+    } else {
+      enabledPlugins = withPluginRequirements([...enabledPlugins, dir]);
+    }
     await setPluginsEnabled(enabledPlugins);
-    if (on) unloadPlugin(dir);
-    else await loadPlugin(dir);
+    if (!on) await loadPlugin(dir);
     reloadEditor();
   }
 
@@ -366,7 +440,7 @@
       const dir = await installPlugin(picked);
       await refreshPlugins();
       if (!enabledPlugins.includes(dir)) {
-        enabledPlugins = [...enabledPlugins, dir];
+        enabledPlugins = withPluginRequirements([...enabledPlugins, dir]);
         await setPluginsEnabled(enabledPlugins);
         await loadPlugin(dir);
         reloadEditor();
@@ -425,8 +499,7 @@
   registerCommand({ id: "edit.find", title: "Find…", accelerator: "Mod+F", run: openFind });
   registerCommand({ id: "edit.replace", title: "Find and Replace…", accelerator: "Mod+Alt+F", run: openFind });
 
-  registerCommand({ id: "settings.themeLight", title: "Light Theme", run: () => void chooseTheme("light") });
-  registerCommand({ id: "settings.themeDark", title: "Dark Theme", run: () => void chooseTheme("dark") });
+  registerCommand({ id: "settings.appearance", title: "Appearance…", run: () => { appearanceOpen = true; } });
 
   registerCommand({
     id: "view.commandPalette",
@@ -508,8 +581,7 @@
       id: "settings",
       label: "Settings",
       items: [
-        cmd("settings.themeLight", { checked: themePref === "light" }),
-        cmd("settings.themeDark", { checked: themePref === "dark" }),
+        cmd("settings.appearance"),
         { type: "separator" },
         {
           type: "submenu",
@@ -570,6 +642,7 @@
     try {
       const cfg = await getConfig();
       themePref = cfg.theme === "light" || cfg.theme === "dark" ? cfg.theme : null;
+      applyDotOpacity(typeof cfg.dot_opacity === "number" ? cfg.dot_opacity : 0.12);
       recent = cfg.recent;
       enabledPlugins = cfg.plugins_enabled ?? [];
     } catch {
@@ -578,8 +651,13 @@
 
     // Activate plugins before the first editor is built: their live-preview
     // builders and grammar extensions must be collected before createEditor.
+    await refreshPlugins();
+    const expandedPlugins = withPluginRequirements(enabledPlugins);
+    if (expandedPlugins.length !== enabledPlugins.length) {
+      enabledPlugins = expandedPlugins;
+      await setPluginsEnabled(enabledPlugins);
+    }
     await loadEnabledPlugins(enabledPlugins);
-    void refreshPlugins();
 
     const fromCli = await getInitialFile();
     if (fromCli) {
@@ -646,8 +724,22 @@
   }
 
   onMount(() => {
-    void boot().catch((error) => (fileState.error = String(error)));
+    void boot()
+      .catch((error) => (fileState.error = String(error)))
+      .finally(async () => {
+        const hardTimeout = new Promise<void>((resolve) =>
+          setTimeout(resolve, Math.max(0, 2000 - (performance.now() - splashStartedAt))),
+        );
+        await Promise.race([waitForBaselineCalibration(), hardTimeout]);
+        const minimumRemaining = 350 - (performance.now() - splashStartedAt);
+        if (minimumRemaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, minimumRemaining));
+        }
+        splashVisible = false;
+      });
     return () => {
+      if (opacitySaveTimer) void setDotOpacitySetting(dotOpacity);
+      clearTimeout(opacitySaveTimer);
       unlistenWatch?.();
       unlistenClose?.();
       view?.destroy();
@@ -666,6 +758,20 @@
 />
 <main bind:this={host}></main>
 <StatusBar />
+
+{#if splashVisible}
+  <StartupSplash />
+{/if}
+
+{#if appearanceOpen}
+  <AppearanceDialog
+    theme={themePref ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
+    {dotOpacity}
+    onTheme={(theme) => void chooseTheme(theme)}
+    onDotOpacity={chooseDotOpacity}
+    onClose={closeAppearance}
+  />
+{/if}
 
 {#if paletteOpen}
   <CommandPalette onclose={() => paletteOpen = false} />

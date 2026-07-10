@@ -1,6 +1,6 @@
 //! Window-spawning, the one menu action that is process-level.
 //!
-//! yap no longer has any native menus: the frontend draws its own themed title
+//! bulletmd has no native menus: the frontend draws its own themed title
 //! bar and dropdown menus (see `src/lib/ui/`), routing every action through the
 //! webview. The lone exception is New Window, which starts a second process --
 //! that cannot be done from JS, so it stays a Tauri command.

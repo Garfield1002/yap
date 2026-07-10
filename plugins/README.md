@@ -1,20 +1,20 @@
-# yap plugins
+# bulletmd plugins
 
-Each directory here is an optional, installable feature for yap. A plugin is a
+Each directory here is an optional, installable feature for bulletmd. A plugin is a
 trusted JavaScript package that runs inside the application and can add editor
 behavior, commands, menu entries, status-bar items, and styles.
 
 ## Install a bundled plugin
 
-1. In yap, choose **Settings → Plugins → Install Plugin…**.
+1. In bulletmd, choose **Settings → Plugins → Install Plugin…**.
 2. Choose one plugin directory from this folder, such as `spellcheck/`. Select
    the directory itself, which must contain `manifest.json`.
 3. Enable the plugin from **Settings → Plugins**.
 
-yap copies the plugin to `$YAP_HOME/plugins/`, or `~/.config/yap/plugins/` by
+bulletmd copies the plugin to `$BULLETMD_HOME/plugins/`, or `~/.config/bulletmd/plugins/` by
 default. To update it, reinstall the directory and re-enable the plugin.
 
-Install only plugins you trust: plugins execute with yap's webview privileges.
+Install only plugins you trust: plugins execute with bulletmd's webview privileges.
 
 ## Bundled plugins
 
@@ -26,3 +26,5 @@ Install only plugins you trust: plugins execute with yap's webview privileges.
   use with PDF Export.
 - [Zotero Citations](zotero/README.md) — search Zotero Desktop and insert
   Pandoc-style citations.
+- [Marp Slides](marp/README.md) — live-preview Markdown slide decks and export
+  them to HTML, PDF, or PowerPoint through Marp CLI.

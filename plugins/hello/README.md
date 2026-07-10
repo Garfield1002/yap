@@ -1,6 +1,6 @@
 # Hello plugin
 
-Hello is a minimal working example of the yap plugin API. It is useful as a
+Hello is a minimal working example of the bulletmd plugin API. It is useful as a
 starting point for a new plugin or as a quick check that plugin installation is
 working.
 
@@ -18,5 +18,5 @@ Plugin…**, then enable **Hello** from the Plugins settings.
   live-preview builder.
 
 Read `main.js` alongside this guide: it deliberately touches the simple plugin
-surfaces without importing CodeMirror packages. yap supplies its own module
-instances through `yap.cm`, which prevents incompatible duplicate copies.
+surfaces without importing CodeMirror packages. bulletmd supplies its own module
+instances through `bulletmd.cm`, which prevents incompatible duplicate copies.
