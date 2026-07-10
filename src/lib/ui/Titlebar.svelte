@@ -70,7 +70,11 @@
     {/each}
   </nav>
 
-  <div class="title" data-tauri-drag-region>
+  <!-- Flow spacer carries the drag region and pushes the controls right; the
+       title itself is centred on the window, not on this leftover space. -->
+  <div class="spacer" data-tauri-drag-region></div>
+
+  <div class="title">
     <span class="name">{basename(fileState.path)}</span>
     {#if fileState.dirty}<span class="dot" aria-hidden="true">•</span>{/if}
   </div>
@@ -163,13 +167,25 @@
     z-index: 30;
   }
 
-  .title {
+  .spacer {
     flex: 1;
+    min-width: 0;
+  }
+  /* Centred on the whole titlebar (the window), independent of the unequal
+     left/right regions. `pointer-events: none` lets a drag pass through to the
+     spacer beneath; `max-width` keeps a long name from colliding with them. */
+  .title {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
-    min-width: 0;
+    max-width: 50%;
+    pointer-events: none;
     color: var(--fg-dim);
   }
   .name {
