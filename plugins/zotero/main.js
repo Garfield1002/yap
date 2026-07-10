@@ -45,7 +45,7 @@ function searchError(error) {
 
 export async function activate(bulletmd) {
   const { StateEffect, StateField } = bulletmd.cm.state;
-  const { Decoration, EditorView, ViewPlugin, WidgetType } = bulletmd.cm.view;
+  const { Decoration, EditorView, ViewPlugin, WidgetType, keymap } = bulletmd.cm.view;
   const settings = await bulletmd.settings.get();
   const library = text(settings.library).replace(/^\/+|\/+$/g, "") || DEFAULT_LIBRARY;
   let activeView = null;
@@ -113,7 +113,7 @@ export async function activate(bulletmd) {
     get estimatedHeight() {
       return (
         bibliographyHeights.get(this.sourcePos) ??
-        Math.max(GRID, this.entries.length * GRID) + GRID
+        Math.max(GRID, this.entries.length * GRID)
       );
     }
     toDOM(view) {
@@ -125,7 +125,10 @@ export async function activate(bulletmd) {
       const surface = document.createElement("div");
       surface.className = "bulletmd-zotero-bibliography-surface";
       surface.style.position = "absolute";
-      surface.style.top = "var(--baseline-block-inset, 18px)";
+      // Fill the block, top-aligned: no baseline inset and no extra row, so the
+      // first entry lands where the comment source sits and the block doesn't
+      // shift when toggling source/rendered (mirrors the image widget).
+      surface.style.top = "0";
       surface.style.right = "0";
       surface.style.left = "0";
       surface.style.overflow = "hidden";
@@ -133,7 +136,7 @@ export async function activate(bulletmd) {
       const knownHeight = bibliographyHeights.get(this.sourcePos);
       if (knownHeight) {
         bibliography.style.height = `${knownHeight}px`;
-        surface.style.height = `${Math.max(GRID, knownHeight - GRID)}px`;
+        surface.style.height = `${knownHeight}px`;
       }
       const content = document.createElement("div");
       content.className = "bulletmd-zotero-bibliography-content";
@@ -162,10 +165,9 @@ export async function activate(bulletmd) {
         );
         if (visibleHeight === applied) return;
         applied = visibleHeight;
-        const allocationHeight = visibleHeight + GRID;
-        bibliography.style.height = `${allocationHeight}px`;
+        bibliography.style.height = `${visibleHeight}px`;
         surface.style.height = `${visibleHeight}px`;
-        bibliographyHeights.set(this.sourcePos, allocationHeight);
+        bibliographyHeights.set(this.sourcePos, visibleHeight);
         view.requestMeasure();
       });
       resize.observe(content);
@@ -294,6 +296,39 @@ export async function activate(bulletmd) {
     },
     provide: (field) => EditorView.decorations.from(field),
   });
+
+  // A rendered bibliography is a single block widget with no interior cursor
+  // stop, so a plain arrow steps past it and its source can never be reached.
+  // Mirror the core's block-math navigation (`blockNavigation.ts`): when a
+  // vertical move would skip a rendered directive, land the caret on its near
+  // edge, which reveals the source. It only ever fires on the way *in* --
+  // once revealed, the directive is ordinary text the arrows move through.
+  function directiveBetween(state, a, b) {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    return bibliographyDirectives(state.doc.toString()).find((d) => d.from >= lo && d.to <= hi) ?? null;
+  }
+
+  function enterBibliography(forward) {
+    return (view) => {
+      const range = view.state.selection.main;
+      if (!range.empty) return false;
+      const target = view.moveVertically(range, forward).head;
+      if (target === range.head) return false; // already at the document edge
+      const directive = directiveBetween(view.state, range.head, target);
+      // Nothing skipped, or the caret is already on the directive line (it's
+      // revealed, so a normal move must carry the caret off it -- inclusive
+      // bounds because a one-line directive has no strict interior): move on.
+      if (!directive || (range.head >= directive.from && range.head <= directive.to)) return false;
+      view.dispatch({ selection: { anchor: forward ? directive.from : directive.to }, scrollIntoView: true });
+      return true;
+    };
+  }
+
+  const bibliographyNavigation = keymap.of([
+    { key: "ArrowDown", run: enterBibliography(true) },
+    { key: "ArrowUp", run: enterBibliography(false) },
+  ]);
 
   function refreshViews() {
     for (const view of views) {
@@ -531,7 +566,7 @@ export async function activate(bulletmd) {
     input.focus();
   }
 
-  bulletmd.editor.registerExtension([referenceField, tracker]);
+  bulletmd.editor.registerExtension([referenceField, tracker, bibliographyNavigation]);
   bulletmd.commands.register({
     id: "zotero.insert-citation",
     title: "Zotero: Insert Citation…",

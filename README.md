@@ -5,15 +5,13 @@
 <h1 align="center">bulletmd</h1>
 
 <p align="center">
-  A native, minimalist Markdown editor that renders everything except the block
-  you are actively editing.
+  A minimalist Markdown editor that renders everything except the block you're actively editing.
 </p>
 
-bulletmd is a digital bullet journal built on plain Markdown files. A subtle
-dot-grid background gives notes the rhythm of paper, while your current block
-stays editable as raw Markdown and the rest of the document renders in place.
+bulletmd is a digital bullet journal built on plain Markdown files. 
+On a subtle dot-grid background, edit your notes as raw Markdown while the rest of the document renders in place.
 
-![bulletmd](.github/screenshot.png)
+![bulletmd](.github/demo.gif)
 
 ## Why bulletmd?
 
@@ -22,9 +20,9 @@ Most Markdown editors force you to choose between two modes:
 - raw Markdown that is precise but visually noisy;
 - a rich-text editor that looks clean but hides the underlying syntax.
 
-bulletmd keeps both aligned in a single view. Put your cursor in a heading,
-link, citation, or formatted block to edit its Markdown directly. Move away, and
-it returns to its rendered form.
+bulletmd keeps both aligned in a single view.
+Put your cursor in a heading, link, citation, or formatted block to edit its Markdown directly.
+Move away, and it returns to its rendered form.
 
 No split pane. No preview mode. No switching contexts.
 
@@ -32,10 +30,8 @@ No split pane. No preview mode. No switching contexts.
 
 ### Aligned live preview
 
-The block under your cursor shows its raw Markdown source; every other block
-renders rich — the Typora / Obsidian "live preview" model. Revealing a block
-only makes the markup characters *appear*: the text itself never restyles or
-reflows, because one proportional font is used for both raw and rendered text.
+The block under your cursor shows its raw Markdown source; every other block renders rich — the [Typora](https://typora.io/) / [Obsidian](https://obsidian.md/) "live preview" model.
+Revealing a block only makes the markup characters *appear*: the text itself never restyles or reflows.
 
 - **GitHub-Flavored Markdown** — headings, emphasis, links, lists, clickable
   task checkboxes, fenced code with syntax highlighting, blockquotes, images.
@@ -56,9 +52,7 @@ minimal interface, and no unnecessary formatting controls.
   inline code, `Ctrl/Cmd+K` wraps a link, `Tab` / `Shift+Tab` nest and un-nest
   list items.
 - **Search & replace** with regex, match-case, and whole-word toggles
-  (`Ctrl/Cmd+F`).
-- **Custom themed title bar** with native File / Edit / Settings menus, light and
-  dark themes that follow the system (with a manual override), and Open Recent.
+  (`Ctrl/Cmd+F`)..
 - **One window, one file.** `bulletmd file.md` opens an editor; each file is its
   own process, matching your window manager and desktop file associations.
 
@@ -86,7 +80,7 @@ plugin and its setup guide.
 > supported Apple hardware. Windows remains untested.
 
 Download the latest bundle for your platform from the
-[Releases page](https://github.com/Garfield1002/yap/releases).
+[Releases page](https://github.com/Garfield1002/bulletmd/releases).
 
 ### Linux
 
@@ -147,15 +141,6 @@ export BULLETMD_HOME="$HOME/notes/.bulletmd"
 > `$HOME/**`. If you point `BULLETMD_HOME` outside your home directory, pasted
 > images will save but won't display until that scope is widened.
 
-## Who is it for?
-
-bulletmd is useful for:
-
-- researchers writing with citations;
-- developers writing documentation;
-- students taking structured notes;
-- writers who prefer Markdown but want a cleaner editing experience;
-- anyone who finds split-pane Markdown editors distracting.
 
 ## Philosophy
 
@@ -181,4 +166,4 @@ instructions, and plugin APIs live in:
 
 ## License
 
-MIT
+[MIT](LICENSE.md)
