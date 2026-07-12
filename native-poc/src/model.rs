@@ -26,6 +26,13 @@ pub struct RenderLine {
     pub source_map: Vec<usize>,
     pub level: u8,
     pub code_block: bool,
+    pub image: Option<MarkdownImage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MarkdownImage {
+    pub src: String,
+    pub alt: String,
 }
 
 impl RenderLine {
@@ -314,6 +321,7 @@ fn empty_block(id: BlockId, offset: usize) -> Block {
             source_map: vec![offset],
             level: 0,
             code_block: false,
+            image: None,
         }],
     }
 }
@@ -479,6 +487,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 source_map: vec![range.start],
                 level: 0,
                 code_block: true,
+                image: None,
             });
             continue;
         }
@@ -491,6 +500,20 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
         };
         if block.kind == BlockKind::Code {
             result.push(code_line(raw, range.start));
+            continue;
+        }
+        if let Some(image) = standalone_image(raw) {
+            result.push(RenderLine {
+                text: String::new(),
+                spans: vec![RenderSpan {
+                    len: 0,
+                    style: InlineStyle::default(),
+                }],
+                source_map: vec![range.start],
+                level: 0,
+                code_block: false,
+                image: Some(image),
+            });
             continue;
         }
         let source = &raw[prefix_len.min(raw.len())..];
@@ -519,6 +542,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             source_map: map,
             level,
             code_block: false,
+            image: None,
         });
     }
     if result.is_empty() {
@@ -531,6 +555,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             source_map: vec![block.range.start],
             level: 0,
             code_block: block.kind == BlockKind::Code,
+            image: None,
         });
     }
     result
@@ -565,7 +590,36 @@ fn code_line(raw: &str, base: usize) -> RenderLine {
         source_map: map,
         level: 0,
         code_block: true,
+        image: None,
     }
+}
+
+fn standalone_image(raw: &str) -> Option<MarkdownImage> {
+    let trimmed = raw.trim();
+    let mut depth = 0usize;
+    let mut src = None;
+    let mut alt = String::new();
+    let mut saw_outside = false;
+    for (event, _) in Parser::new(trimmed).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph) if depth == 0 => {}
+            Event::Start(Tag::Image { dest_url, .. }) if depth == 0 && src.is_none() => {
+                depth = 1;
+                src = Some(dest_url.into_string());
+            }
+            Event::Start(_) if depth > 0 => depth += 1,
+            Event::End(TagEnd::Image) if depth == 1 => depth = 0,
+            Event::End(_) if depth > 1 => depth -= 1,
+            Event::Text(text) | Event::Code(text) if depth > 0 => alt.push_str(&text),
+            Event::SoftBreak | Event::HardBreak if depth > 0 => alt.push(' '),
+            _ if depth == 0 => saw_outside = true,
+            _ => {}
+        }
+    }
+    if saw_outside || depth != 0 {
+        return None;
+    }
+    Some(MarkdownImage { src: src?, alt })
 }
 
 fn render_inline(source: &str, base: usize) -> (String, Vec<RenderSpan>, Vec<usize>) {
@@ -730,6 +784,22 @@ mod tests {
         assert_eq!(lines[1].text, "let answer = 42;");
         assert_eq!(lines[2].text, "");
         assert!(lines.iter().all(|line| line.code_block));
+    }
+
+    #[test]
+    fn standalone_image_becomes_a_rendered_image() {
+        let model = DocumentModel::new("![the *alt*](images/pic.png)".into());
+        let image = model.blocks[0].rendered[0].image.as_ref().unwrap();
+        assert_eq!(image.src, "images/pic.png");
+        assert_eq!(image.alt, "the alt");
+        assert!(model.blocks[0].rendered[0].text.is_empty());
+    }
+
+    #[test]
+    fn image_mixed_with_text_remains_inline_text() {
+        let model = DocumentModel::new("before ![alt](pic.png) after".into());
+        assert!(model.blocks[0].rendered[0].image.is_none());
+        assert_eq!(model.blocks[0].rendered[0].text, "before alt after");
     }
 
     #[test]

@@ -67,6 +67,12 @@ choice. Closing or switching away from dirty content requires confirmation.
 Settings shares the production `state.json` and provides System/Light/Dark
 themes plus dot-grid opacity presets from 0% to 30%.
 
+Standalone Markdown images render in place while inactive and reveal their raw
+`![alt](source)` when clicked. Filesystem paths resolve relative to the note,
+absolute paths and HTTP(S) URLs use GPUI's asynchronous image cache, and image
+height snaps to the same 24 px grid as text. Pasting an image stores it under
+`BULLETMD_HOME/assets/` and inserts an absolute Markdown reference.
+
 ## Verification and instrumentation
 
 Pure retained-model behavior and mappings are covered by eight tests. They
@@ -134,7 +140,8 @@ to separate scheduling delay from CPU parse/shape/paint work; the model work for
 - Caret auto-scroll and two-dimensional wheel/trackpad behavior use
   `ScrollHandle`; the automated compositor launch exercised painting and frame
   scheduling, but manual wheel/trackpad interaction remains to be checked.
-- Accessibility completion, bidi validation, plugins, images, math, tables,
+- Accessibility completion, bidi validation, plugins, inline mixed-text images,
+  animated-image frame advancement, math, tables,
   export, packaging, macOS, and Windows remain out of scope.
 
 ## Recommendation

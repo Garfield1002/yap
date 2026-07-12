@@ -1,6 +1,6 @@
 # Native Markdown
 
-This fixture exercises the supported native editor surface without images, tables, HTML, math, task lists, or plugins.
+This fixture exercises the supported native editor surface without tables, HTML, math, task lists, or plugins.
 
 ## Editing in place
 
@@ -13,6 +13,8 @@ The document remains rendered until the cursor enters a block. The active block 
 ### Stable rhythm
 
 Every baseline belongs to a twenty-four pixel grid. Larger headings occupy additional rows while preserving the common baseline phase.
+
+![A grid-aligned BulletMD image fixture](sample-image.svg)
 
 ```rust
 const GRID: f32 = 24.0;

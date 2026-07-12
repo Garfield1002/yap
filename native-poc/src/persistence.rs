@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::mpsc::{self, RecvTimeoutError},
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -66,6 +66,31 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
     let text = serde_json::to_string_pretty(config).map_err(|error| error.to_string())?;
     atomic_write(&dir.join("state.json"), &text)
+}
+
+pub fn save_pasted_image(bytes: &[u8], extension: &str) -> Result<PathBuf, String> {
+    save_pasted_image_in(&config_home().join("assets"), bytes, extension)
+}
+
+fn save_pasted_image_in(dir: &Path, bytes: &[u8], extension: &str) -> Result<PathBuf, String> {
+    let extension: String = extension
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_lowercase();
+    let extension = if extension.is_empty() {
+        "png"
+    } else {
+        &extension
+    };
+    fs::create_dir_all(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let path = dir.join(format!("paste-{millis}.{extension}"));
+    fs::write(&path, bytes).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(path)
 }
 
 pub fn push_recent(config: &mut AppConfig, path: &Path) {
@@ -189,6 +214,17 @@ mod tests {
         push_recent(&mut config, Path::new("/5.md"));
         assert_eq!(config.recent.len(), RECENT_MAX);
         assert_eq!(config.recent[0], "/5.md");
+    }
+
+    #[test]
+    fn pasted_images_are_saved_with_a_sanitized_extension() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = save_pasted_image_in(directory.path(), b"pixels", "P.N/G").unwrap();
+        assert_eq!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("png")
+        );
+        assert_eq!(fs::read(path).unwrap(), b"pixels");
     }
 
     #[test]

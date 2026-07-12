@@ -4,7 +4,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     ops::Range,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -16,10 +16,11 @@ use bulletmd_native_poc::{
     persistence::{self, AppConfig},
 };
 use gpui::{
-    App, Application, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Element, ElementId,
-    ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Focusable, FontStyle, FontWeight,
-    GlobalElementId, Hsla, KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, PaintQuad, PathPromptOptions, Pixels, Point, PromptLevel, ScrollHandle,
+    App, Application, Bounds, BoxShadow, ClipboardEntry, ClipboardItem, Context, CursorStyle,
+    Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Focusable,
+    FontStyle, FontWeight, GlobalElementId, Hsla, ImageFormat, ImgResourceLoader, KeyBinding,
+    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad,
+    PathPromptOptions, Pixels, Point, PromptLevel, RenderImage, Resource, ScrollHandle,
     SharedString, Style, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window,
     WindowAppearance, WindowBounds, WindowDecorations, WindowOptions, WrappedLine, actions,
     deferred, div, fill, font, point, prelude::*, px, rgb, size,
@@ -38,6 +39,49 @@ const WRAP_WIDTH: f32 = DOCUMENT_WIDTH - INSET * 2.;
 // its missing-family fallback does not reliably retain bold and italic faces.
 const PROSE_FONT: &str = "Noto Sans";
 const MONO_FONT: &str = "Noto Sans Mono";
+const DEFAULT_IMAGE_ROWS: usize = 8;
+
+fn image_resource(src: &str, document_path: Option<&Path>) -> Resource {
+    if src.starts_with("http://") || src.starts_with("https://") || src.starts_with("data:") {
+        return Resource::Uri(src.to_string().into());
+    }
+    let src = src.strip_prefix("file://").unwrap_or(src);
+    let path = PathBuf::from(src);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        document_path
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new("."))
+            .join(path)
+    };
+    Resource::from(path)
+}
+
+fn image_allocation_rows(data: &RenderImage) -> usize {
+    let dimensions = data.size(0);
+    let width = dimensions.width.0.max(1) as f32;
+    let height = dimensions.height.0.max(1) as f32;
+    let ratio = width / height;
+    let intrinsic_height = width.min(WRAP_WIDTH) / ratio;
+    let mut rows = (intrinsic_height / GRID).ceil().max(1.) as usize;
+    if rows as f32 * GRID * ratio > WRAP_WIDTH + 0.5 {
+        rows = ((WRAP_WIDTH / ratio) / GRID).floor().max(1.) as usize;
+    }
+    rows
+}
+
+fn image_extension(format: ImageFormat) -> &'static str {
+    match format {
+        ImageFormat::Png => "png",
+        ImageFormat::Jpeg => "jpg",
+        ImageFormat::Webp => "webp",
+        ImageFormat::Gif => "gif",
+        ImageFormat::Svg => "svg",
+        ImageFormat::Bmp => "bmp",
+        ImageFormat::Tiff => "tiff",
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Palette {
@@ -181,6 +225,16 @@ struct ShapedLine {
     layout: WrappedLine,
     map: Option<Vec<usize>>,
     code: bool,
+    image: Option<ShapedImage>,
+}
+
+#[derive(Clone)]
+struct ShapedImage {
+    alt: String,
+    resource: Resource,
+    data: Option<Arc<RenderImage>>,
+    failed: bool,
+    rows: usize,
 }
 
 #[derive(Clone, Default)]
@@ -870,6 +924,7 @@ impl Editor {
             if let Ok(Ok(Some(path))) = selected.await {
                 let _ = this.update_in(cx, |editor, window, cx| {
                     editor.path = Some(path.clone());
+                    editor.shapes.clear();
                     persistence::push_recent(&mut editor.config, &path);
                     let _ = persistence::save_config(&editor.config);
                     if let Err(error) = editor.save_now() {
@@ -915,6 +970,7 @@ impl Editor {
                     match result {
                         Ok(()) => {
                             editor.path = Some(target.clone());
+                            editor.shapes.clear();
                             persistence::push_recent(&mut editor.config, &target);
                             let _ = persistence::save_config(&editor.config);
                             editor.status = "renamed".into();
@@ -1408,7 +1464,35 @@ impl Editor {
         }
     }
     fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(t) = cx.read_from_clipboard().and_then(|i| i.text()) {
+        let Some(item) = cx.read_from_clipboard() else {
+            return;
+        };
+        if let Some(image) = item.entries().iter().find_map(|entry| match entry {
+            ClipboardEntry::Image(image) => Some(image),
+            ClipboardEntry::String(_) => None,
+        }) {
+            match persistence::save_pasted_image(image.bytes(), image_extension(image.format())) {
+                Ok(path) => {
+                    let path = path.to_string_lossy();
+                    let markdown = if path.chars().any(char::is_whitespace) {
+                        format!("![](<{path}>)")
+                    } else {
+                        format!("![]({path})")
+                    };
+                    self.edit(
+                        self.selection.clone(),
+                        &markdown,
+                        EditMode::CrossBlock,
+                        true,
+                        cx,
+                    );
+                }
+                Err(error) => {
+                    self.status = format!("image paste failed: {error}");
+                    cx.notify();
+                }
+            }
+        } else if let Some(t) = item.text() {
             let mode =
                 if t.contains('\n') || self.document.touched_blocks(&self.selection).len() > 1 {
                     EditMode::CrossBlock
@@ -1619,10 +1703,11 @@ impl Editor {
         self.selecting = false
     }
 
-    fn ensure_shapes(&mut self, window: &mut Window) {
+    fn ensure_shapes(&mut self, window: &mut Window, cx: &mut App) {
         let revealed = self.revealed.clone();
         let caret = self.cursor();
         let palette = palette(self.dark, self.dot_opacity);
+        let document_path = self.path.clone();
         for (i, block) in self.document.blocks.iter().enumerate() {
             let editing_lines = self.document.editing_lines(i, caret);
             let cache = self.shapes.entry(block.id).or_default();
@@ -1630,11 +1715,32 @@ impl Editor {
                 let lines = block
                     .rendered
                     .iter()
-                    .map(|l| shape_render(l, palette, window))
+                    .map(|l| shape_render(l, document_path.as_deref(), palette, window))
                     .collect::<Vec<_>>();
                 cache.rendered_rows = rows(&lines);
                 cache.rendered = Some(lines);
                 self.document.counters.rendered_reshapes += 1
+            }
+            if let Some(lines) = cache.rendered.as_mut() {
+                for line in lines.iter_mut() {
+                    let Some(image) = line.image.as_mut() else {
+                        continue;
+                    };
+                    match window.use_asset::<ImgResourceLoader>(&image.resource, cx) {
+                        Some(Ok(data)) => {
+                            image.rows = image_allocation_rows(&data);
+                            image.data = Some(data);
+                            image.failed = false;
+                        }
+                        Some(Err(_)) => {
+                            image.rows = 2;
+                            image.data = None;
+                            image.failed = true;
+                        }
+                        None => {}
+                    }
+                }
+                cache.rendered_rows = rows(lines);
             }
             let raw_is_stale = cache.raw.as_ref().is_some_and(|lines| {
                 lines.len() != editing_lines.len()
@@ -2433,10 +2539,18 @@ struct Prepared {
     lines: Vec<HitLine>,
     block_boxes: Vec<(usize, Bounds<Pixels>)>,
     code_slabs: Vec<(usize, Bounds<Pixels>)>,
+    images: Vec<PreparedImage>,
     cursor: Option<PaintQuad>,
     selection: Vec<PaintQuad>,
     visible: Bounds<Pixels>,
     anchor_delta: Option<Pixels>,
+}
+
+struct PreparedImage {
+    surface: Bounds<Pixels>,
+    bounds: Option<Bounds<Pixels>>,
+    data: Option<Arc<RenderImage>>,
+    fallback: Option<(WrappedLine, Point<Pixels>)>,
 }
 impl IntoElement for DocumentElement {
     type Element = Self;
@@ -2460,7 +2574,7 @@ impl Element for DocumentElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        self.editor.update(cx, |e, _| e.ensure_shapes(window));
+        self.editor.update(cx, |e, cx| e.ensure_shapes(window, cx));
         let rows = self.editor.read(cx).total_rows();
         let mut s = Style::default();
         s.size.width = px(DOCUMENT_WIDTH).into();
@@ -2487,6 +2601,7 @@ impl Element for DocumentElement {
         let mut lines = Vec::new();
         let mut block_boxes = Vec::new();
         let mut code_slabs = Vec::new();
+        let mut images = Vec::new();
         let mut cursor = None;
         let mut selections = Vec::new();
         let mut anchor_delta = None;
@@ -2540,6 +2655,52 @@ impl Element for DocumentElement {
                         point(bounds.left() + px(INSET + code_inset), cell_top),
                         size(px(WRAP_WIDTH - code_inset * 2.), px(n as f32 * GRID)),
                     );
+                    if let Some(image) = &line.image {
+                        let image_bounds = image.data.as_ref().map(|data| {
+                            let dimensions = data.size(0);
+                            let ratio = dimensions.width.0.max(1) as f32
+                                / dimensions.height.0.max(1) as f32;
+                            let height = n as f32 * GRID;
+                            let width = (height * ratio).min(WRAP_WIDTH);
+                            Bounds::new(
+                                point(lb.left() + (px(WRAP_WIDTH) - px(width)) / 2., lb.top()),
+                                size(px(width), px(height)),
+                            )
+                        });
+                        let fallback = image.failed.then(|| {
+                            let text = if image.alt.is_empty() {
+                                "Image failed to load".to_string()
+                            } else {
+                                image.alt.clone()
+                            };
+                            let layout = window
+                                .text_system()
+                                .shape_text(
+                                    SharedString::from(text.clone()),
+                                    px(13.5),
+                                    &[TextRun {
+                                        len: text.len(),
+                                        font: font(PROSE_FONT),
+                                        color: color(0xcf222e),
+                                        background_color: None,
+                                        underline: None,
+                                        strikethrough: None,
+                                    }],
+                                    Some(px(WRAP_WIDTH - 16.)),
+                                    None,
+                                )
+                                .unwrap()
+                                .remove(0);
+                            let origin = point(lb.left() + px(8.), lb.top() + px(GRID / 2.));
+                            (layout, origin)
+                        });
+                        images.push(PreparedImage {
+                            surface: lb,
+                            bounds: image_bounds,
+                            data: image.data.clone(),
+                            fallback,
+                        });
+                    }
                     let paint_origin = point(lb.left(), paint_top);
                     let hit = HitLine {
                         block: bi,
@@ -2641,6 +2802,7 @@ impl Element for DocumentElement {
             lines,
             block_boxes,
             code_slabs,
+            images,
             cursor,
             selection: selections,
             visible,
@@ -2700,6 +2862,22 @@ impl Element for DocumentElement {
                 point(outer.right() - px(1.), outer.bottom() - px(1.)),
             );
             window.paint_quad(fill(inner, colors.code_bg).corner_radii(px(5.)));
+        }
+        for image in &p.images {
+            window.paint_quad(fill(image.surface, colors.bg));
+            if let (Some(bounds), Some(data)) = (image.bounds, image.data.clone()) {
+                let _ = window.paint_image(bounds, px(6.).into(), data, 0, false);
+            } else if let Some((layout, origin)) = &image.fallback {
+                paint_outline(window, image.surface, color(0xcf222e));
+                let _ = layout.paint(
+                    *origin,
+                    px(GRID),
+                    TextAlign::Left,
+                    Some(image.surface),
+                    window,
+                    cx,
+                );
+            }
         }
         for q in p.selection.drain(..) {
             window.paint_quad(q)
@@ -2775,6 +2953,12 @@ impl Element for DocumentElement {
             }
             for (_, slab) in &p.code_slabs {
                 paint_outline(window, *slab, alpha(color(0x2da44e), 0.9));
+            }
+            for image in &p.images {
+                paint_outline(window, image.surface, alpha(color(0x8250df), 0.9));
+                if let Some(bounds) = image.bounds {
+                    paint_outline(window, bounds, alpha(color(0x1f883d), 0.9));
+                }
             }
             for line in &p.lines {
                 let debug_color = if line.separator {
@@ -2880,6 +3064,7 @@ fn shape_raw(
         layout,
         map: None,
         code: code_block,
+        image: None,
     }
 }
 
@@ -3160,7 +3345,12 @@ fn code_text_runs(text: &str, fence: bool, palette: Palette) -> Vec<TextRun> {
         .collect()
 }
 
-fn shape_render(line: &RenderLine, palette: Palette, w: &mut Window) -> ShapedLine {
+fn shape_render(
+    line: &RenderLine,
+    document_path: Option<&Path>,
+    palette: Palette,
+    w: &mut Window,
+) -> ShapedLine {
     let size = match line.level {
         1 => 30.4,
         2 => 24.,
@@ -3225,12 +3415,22 @@ fn shape_render(line: &RenderLine, palette: Palette, w: &mut Window) -> ShapedLi
         layout,
         map: Some(line.source_map.clone()),
         code: line.code_block,
+        image: line.image.as_ref().map(|image| ShapedImage {
+            alt: image.alt.clone(),
+            resource: image_resource(&image.src, document_path),
+            data: None,
+            failed: false,
+            rows: DEFAULT_IMAGE_ROWS,
+        }),
     }
 }
 fn rows(lines: &[ShapedLine]) -> usize {
     lines.iter().map(line_rows).sum()
 }
 fn line_rows(line: &ShapedLine) -> usize {
+    if let Some(image) = &line.image {
+        return image.rows;
+    }
     let wrapped = line.layout.wrap_boundaries().len() + 1;
     let glyph_height = line.layout.ascent() + line.layout.descent();
     let height_rows = (glyph_height / px(GRID)).ceil() as usize;
