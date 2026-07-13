@@ -10,7 +10,7 @@ impl Editor {
         self.sel.range = 0..0;
         self.sel.reversed = false;
         self.sel.marked = None;
-        self.layout.revealed = HashSet::from([self.document.blocks[0].id]);
+        self.layout.revealed.clear();
         self.layout.shapes.clear();
         self.layout.hit_lines.clear();
         self.history.undo.clear();
@@ -299,7 +299,7 @@ impl Editor {
                             editor.document = DocumentModel::new(disk.clone());
                             editor.save.saved_text = disk;
                             editor.sel.range = 0..0;
-                            editor.layout.revealed = HashSet::from([editor.document.blocks[0].id]);
+                            editor.layout.revealed.clear();
                             editor.layout.shapes.clear();
                             editor.history.undo.clear();
                             editor.history.redo.clear();

@@ -260,8 +260,8 @@ pub struct Editor {
 
 impl Editor {
     /// Builds an editor for `content` loaded from `path` (if any), applying the
-    /// persisted `config` and resolved `theme`. The first block starts revealed
-    /// so the caret has a source line to land on.
+    /// persisted `config` and resolved `theme`. Nothing starts revealed, so the
+    /// document opens fully rendered with no caret until the reader interacts.
     pub fn new(
         path: Option<PathBuf>,
         content: String,
@@ -270,7 +270,6 @@ impl Editor {
         cx: &mut Context<Self>,
     ) -> Self {
         let document = DocumentModel::new(content.clone());
-        let first = document.blocks[0].id;
         Self {
             path,
             focus: cx.focus_handle(),
@@ -279,10 +278,7 @@ impl Editor {
                 ensure_caret_visible: true,
                 ..Selection::default()
             },
-            layout: LayoutState {
-                revealed: HashSet::from([first]),
-                ..LayoutState::default()
-            },
+            layout: LayoutState::default(),
             vertical_scroll: ScrollHandle::new(),
             horizontal_scroll: ScrollHandle::new(),
             history: History::default(),
