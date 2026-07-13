@@ -6,6 +6,7 @@ use std::{
 use crate::{
     editor::Editor,
     layout::{DOCUMENT_WIDTH, FIRST_BASELINE, GRID, INSET, PROSE_FONT, WRAP_WIDTH},
+    model::TaskMark,
     shaping::line_rows,
     theme::{alpha, color, palette},
 };
@@ -69,6 +70,7 @@ pub struct HitLine {
     pub paint_origin: Point<Pixels>,
     pub layout: WrappedLine,
     pub map: Option<Vec<usize>>,
+    pub task: Option<TaskMark>,
 }
 
 pub(crate) fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> usize {
@@ -348,6 +350,7 @@ impl Element for DocumentElement {
                         paint_origin,
                         layout: line.layout.clone(),
                         map: line.map.clone(),
+                        task: line.task.clone(),
                     };
                     if active && line.map.is_none() {
                         let pos = e

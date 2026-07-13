@@ -10,7 +10,7 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::layout::{DEFAULT_IMAGE_ROWS, GRID, MONO_FONT, PROSE_FONT, WRAP_WIDTH};
-use crate::model::{BlockKind, InlineStyle, RenderLine, RenderSpan};
+use crate::model::{BlockKind, InlineStyle, RenderLine, RenderSpan, TaskMark};
 use crate::theme::{alpha, Palette};
 
 #[derive(Clone)]
@@ -21,6 +21,7 @@ pub struct ShapedLine {
     pub code: bool,
     pub inline_code: Vec<Range<usize>>,
     pub image: Option<ShapedImage>,
+    pub task: Option<TaskMark>,
     /// Ascent used for vertical placement. Falls back to the font's metrics
     /// when the line has no glyphs, since an empty shaped line reports zero.
     pub ascent: Pixels,
@@ -178,6 +179,7 @@ pub fn shape_raw(
             inline_code_ranges(text)
         },
         image: None,
+        task: None,
         ascent,
         descent,
     }
@@ -585,6 +587,7 @@ pub fn shape_render(
             failed: false,
             rows: DEFAULT_IMAGE_ROWS,
         }),
+        task: line.task.clone(),
         ascent,
         descent,
     }

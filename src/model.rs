@@ -27,12 +27,23 @@ pub struct RenderLine {
     pub level: u8,
     pub code_block: bool,
     pub image: Option<MarkdownImage>,
+    /// Set when the line is a task-list item, carrying its checkbox state and
+    /// the source range of the `[ ]`/`[x]` box so a click can toggle it.
+    pub task: Option<TaskMark>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MarkdownImage {
     pub src: String,
     pub alt: String,
+}
+
+/// A rendered task-list checkbox: whether it is checked and the source byte
+/// range of its `[ ]`/`[x]` marker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskMark {
+    pub checked: bool,
+    pub box_range: Range<usize>,
 }
 
 impl RenderLine {
@@ -418,6 +429,7 @@ fn empty_block(id: BlockId, offset: usize) -> Block {
             level: 0,
             code_block: false,
             image: None,
+            task: None,
         }],
     }
 }
@@ -566,15 +578,25 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 level: 0,
                 code_block: true,
                 image: None,
+                task: None,
             });
             continue;
         }
+        let task = (block.kind == BlockKind::List)
+            .then(|| task_prefix(raw, range.start))
+            .flatten();
         let (prefix_len, visible_prefix, level) = match block.kind {
             BlockKind::Heading(level) => (level as usize + 1, String::new(), level),
-            BlockKind::List => list_prefix(raw)
-                .map_or((0, String::new(), 0), |(len, prefix)| (len, prefix, 0)),
+            BlockKind::List => task.clone().map_or_else(
+                || list_prefix(raw).map_or((0, String::new(), 0), |(len, prefix)| (len, prefix, 0)),
+                |(len, mark)| {
+                    let glyph = if mark.checked { "☑ " } else { "☐ " };
+                    (len, glyph.to_string(), 0)
+                },
+            ),
             _ => (0, String::new(), 0),
         };
+        let task = task.map(|(_, mark)| mark);
         if block.kind == BlockKind::Code {
             result.push(code_line(raw, range.start));
             continue;
@@ -590,6 +612,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 level: 0,
                 code_block: false,
                 image: Some(image),
+                task: None,
             });
             continue;
         }
@@ -620,6 +643,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             level,
             code_block: false,
             image: None,
+            task,
         });
     }
     if result.is_empty() {
@@ -633,6 +657,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             level: 0,
             code_block: block.kind == BlockKind::Code,
             image: None,
+            task: None,
         });
     }
     result
@@ -652,6 +677,34 @@ fn list_prefix(raw: &str) -> Option<(usize, String)> {
     None
 }
 
+/// Detects a task-list item (`- [ ] `/`- [x] `, `*`/`+` bullets too) at the
+/// start of `raw`, whose source begins at absolute offset `base`.
+///
+/// Returns the byte length of the whole `bullet + box + space` prefix to hide,
+/// and the [`TaskMark`] carrying the checked state and the absolute source
+/// range of the three-character `[ ]`/`[x]` box.
+fn task_prefix(raw: &str, base: usize) -> Option<(usize, TaskMark)> {
+    let trimmed = raw.trim_start();
+    let indent = raw.len() - trimmed.len();
+    let after_bullet = trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+        .or_else(|| trimmed.strip_prefix("+ "))?;
+    let checked = match after_bullet.get(..4) {
+        Some("[ ] ") => false,
+        Some("[x] " | "[X] ") => true,
+        _ => return None,
+    };
+    let box_start = base + indent + 2;
+    Some((
+        indent + 2 + 4,
+        TaskMark {
+            checked,
+            box_range: box_start..box_start + 3,
+        },
+    ))
+}
+
 fn code_line(raw: &str, base: usize) -> RenderLine {
     let mut map = Vec::with_capacity(raw.len() + 1);
     map.extend(base..=base + raw.len());
@@ -668,6 +721,7 @@ fn code_line(raw: &str, base: usize) -> RenderLine {
         level: 0,
         code_block: true,
         image: None,
+        task: None,
     }
 }
 
@@ -1125,5 +1179,35 @@ mod tests {
     fn non_delimiters_do_not_auto_close() {
         assert_eq!(auto_close("a", None), None);
         assert_eq!(auto_close(")", None), None);
+    }
+
+    #[test]
+    fn task_prefix_detects_state_and_box() {
+        assert_eq!(
+            task_prefix("- [ ] todo", 0),
+            Some((6, TaskMark { checked: false, box_range: 2..5 }))
+        );
+        assert_eq!(
+            task_prefix("- [x] done", 0),
+            Some((6, TaskMark { checked: true, box_range: 2..5 }))
+        );
+        assert_eq!(
+            task_prefix("  * [X] indented", 10),
+            Some((8, TaskMark { checked: true, box_range: 14..17 }))
+        );
+        assert_eq!(task_prefix("- plain", 0), None);
+        assert_eq!(task_prefix("1. ordered", 0), None);
+    }
+
+    #[test]
+    fn task_line_renders_a_checkbox_glyph_and_mark() {
+        let model = DocumentModel::new("- [ ] todo\n- [x] done".into());
+        let lines: Vec<_> = model.blocks.iter().flat_map(|b| &b.rendered).collect();
+        let todo = lines.iter().find(|l| l.text.contains("todo")).unwrap();
+        assert_eq!(todo.task.as_ref().map(|t| t.checked), Some(false));
+        assert!(todo.text.starts_with('☐'));
+        let done = lines.iter().find(|l| l.text.contains("done")).unwrap();
+        assert_eq!(done.task.as_ref().map(|t| t.checked), Some(true));
+        assert!(done.text.starts_with('☑'));
     }
 }

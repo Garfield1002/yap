@@ -74,8 +74,51 @@ impl Editor {
             })
             .map_or_else(|| self.cursor(), |line| source_offset_for_hit(line, p))
     }
+    /// The task checkbox under `p`, if the point falls on a rendered task
+    /// item's `☐`/`☑` glyph.
+    fn task_box_at(&self, p: Point<Pixels>) -> Option<TaskMark> {
+        let line = self.layout.hit_lines.iter().find(|line| {
+            line.task.is_some() && p.y >= line.bounds.top() && p.y <= line.bounds.bottom()
+        })?;
+        // The checkbox glyph is the line's first character (`☐`/`☑`, 3 bytes).
+        let right = line.paint_origin.x + line.layout.position_for_index(3, px(GRID))?.x;
+        (p.x >= line.paint_origin.x - px(3.) && p.x <= right + px(4.))
+            .then(|| line.task.clone())
+            .flatten()
+    }
+
+    fn toggle_task(&mut self, mark: &TaskMark, cx: &mut Context<Self>) {
+        let prev_range = self.sel.range.clone();
+        let prev_reversed = self.sel.reversed;
+        let prev_revealed = self.layout.revealed.clone();
+        let replacement = if mark.checked { "[ ]" } else { "[x]" };
+        self.edit(mark.box_range.clone(), replacement, EditMode::Ordinary, true, cx);
+        // The box keeps its length, so the prior offsets stay valid: restore the
+        // selection and revealed set so toggling never moves the caret or pops
+        // the item open into source view.
+        self.sel.range = prev_range;
+        self.sel.reversed = prev_reversed;
+        self.sel.ensure_caret_visible = false;
+        self.layout.revealed = prev_revealed;
+        // Re-render the affected block so its checkbox glyph reflects the toggle.
+        let index = self.document.block_at(mark.box_range.start);
+        if let Some(id) = self.document.commit_block(index)
+            && let Some(cache) = self.layout.shapes.get_mut(&id)
+        {
+            cache.rendered = None;
+            cache.rendered_rows = 0;
+        }
+        cx.notify();
+    }
+
     pub(crate) fn mouse_down(&mut self, e: &MouseDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         w.focus(&self.focus);
+        if !e.modifiers.shift
+            && let Some(mark) = self.task_box_at(e.position)
+        {
+            self.toggle_task(&mark, cx);
+            return;
+        }
         self.sel.selecting = true;
         let source = self.index_at(e.position);
         if e.modifiers.shift {
