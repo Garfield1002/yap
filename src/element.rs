@@ -491,7 +491,12 @@ impl Element for DocumentElement {
             window.paint_quad(q);
         }
         for slab in &p.inline_code_boxes {
-            window.paint_quad(fill(*slab, colors.code_bg).corner_radii(px(4.)));
+            window.paint_quad(fill(*slab, colors.code_border).corner_radii(px(6.)));
+            let inner = Bounds::from_corners(
+                point(slab.left() + px(1.), slab.top() + px(1.)),
+                point(slab.right() - px(1.), slab.bottom() - px(1.)),
+            );
+            window.paint_quad(fill(inner, colors.code_bg).corner_radii(px(5.)));
         }
         for l in &p.lines {
             let _ = l.layout.paint(
