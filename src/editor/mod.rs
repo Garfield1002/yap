@@ -17,8 +17,8 @@ use crate::{
     layout::{DOCUMENT_WIDTH, GRID, PROSE_FONT},
     persistence::{self, AppConfig},
     shaping::{
-        ShapeCache, default_text_metrics, grapheme_offset, image_allocation_rows, image_extension,
-        next_word_boundary, previous_word_boundary, rows, shape_raw, shape_render,
+        ShapeCache, ShapedLine, default_text_metrics, grapheme_offset, image_allocation_rows,
+        image_extension, next_word_boundary, previous_word_boundary, rows, shape_raw, shape_render,
         source_line_is_code, utf16_to_utf8, utf8_to_utf16,
     },
     theme::{Palette, alpha, color, is_dark, palette},
@@ -185,8 +185,13 @@ pub(crate) struct Selection {
     marked: Option<Range<usize>>,
     /// Whether a drag-select is currently in progress.
     selecting: bool,
-    /// Sticky column for vertical caret motion across short lines.
+    /// Sticky column for vertical caret motion across short lines. Used by the
+    /// logical fallback path when no shaped layout is available.
     preferred_column: Option<usize>,
+    /// Sticky horizontal position (pixels from the line's left edge) for
+    /// wrap-aware vertical caret motion. Preferred over `preferred_column` when
+    /// the caret's block has a cached shaped layout.
+    preferred_x: Option<Pixels>,
     /// Pending scroll anchor: (source offset, screen y) to hold steady.
     pub(crate) pending_anchor: Option<(usize, Pixels)>,
     /// Request to scroll the caret into view on the next paint.
@@ -201,6 +206,7 @@ impl Default for Selection {
             marked: None,
             selecting: false,
             preferred_column: None,
+            preferred_x: None,
             pending_anchor: None,
             ensure_caret_visible: false,
         }

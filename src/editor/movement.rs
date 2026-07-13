@@ -46,6 +46,7 @@ impl Editor {
         self.sel.reversed = false;
         self.sel.marked = None;
         self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
         self.sel.ensure_caret_visible = true;
         self.sync_revealed();
         cx.notify();
@@ -63,6 +64,7 @@ impl Editor {
         }
         self.sync_revealed();
         self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
         self.sel.ensure_caret_visible = true;
         cx.notify();
     }
@@ -96,6 +98,7 @@ impl Editor {
         self.sel.reversed = false;
         self.sel.marked = None;
         self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
         self.sel.ensure_caret_visible = true;
         if record {
             self.history.undo.push(tx);
@@ -169,7 +172,86 @@ impl Editor {
     pub(crate) fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
         self.select_to(self.next(self.cursor()), cx);
     }
-    fn vertical(&mut self, dir: isize) -> usize {
+    /// Shapes a single source `range` belonging to `block` on demand, so
+    /// wrap-aware vertical motion can resolve a sticky-x position inside a line
+    /// that isn't currently revealed (e.g. the edge line of an adjacent block).
+    fn shape_line(&self, range: &Range<usize>, block: usize, window: &mut Window) -> ShapedLine {
+        let blk = &self.document.blocks[block];
+        let code = source_line_is_code(blk.kind, blk.range.end, range.start);
+        let default = self
+            .layout
+            .default_text_metrics
+            .unwrap_or_else(|| default_text_metrics(window));
+        shape_raw(
+            range.clone(),
+            self.document.raw_line(range),
+            code,
+            palette(self.theming.dark),
+            default,
+            window,
+        )
+    }
+
+    /// Wrap-aware vertical motion, using shaped raw lines so a visually wrapped
+    /// source line moves row by row like a normal editor, preserving the
+    /// sticky-x column across wrap boundaries and block boundaries alike.
+    /// Returns `None` (to defer to the logical `\n` fallback) only when the
+    /// caret's block has no cached layout, or when moving off the top/bottom of
+    /// the whole document.
+    fn wrapped_vertical(&mut self, dir: isize, window: &mut Window) -> Option<usize> {
+        let c = self.cursor();
+        let block = self.document.block_at(c);
+        let id = self.document.blocks[block].id;
+        let lines = self.layout.shapes.get(&id)?.raw.as_ref()?;
+        let li = lines
+            .iter()
+            .position(|l| l.source.start <= c && c <= l.source.end)?;
+        let line = &lines[li];
+        let pos = line.layout.position_for_index(c - line.source.start, px(GRID))?;
+        let sticky_x = self.sel.preferred_x.unwrap_or(pos.x);
+        self.sel.preferred_x = Some(sticky_x);
+
+        // Resolve a `(shaped line, row-relative y)` to an absolute source offset.
+        let resolve = |line: &ShapedLine, y: Pixels| {
+            let index = line
+                .layout
+                .closest_index_for_position(point(sticky_x, y), px(GRID))
+                .unwrap_or_else(|i| i);
+            line.source.start + index
+        };
+        let last_row_of = |line: &ShapedLine| px(line.layout.wrap_boundaries().len() as f32 * GRID);
+        if dir < 0 {
+            if pos.y > px(0.) {
+                // A wrapped row above, still inside this source line.
+                Some(resolve(line, pos.y - px(GRID)))
+            } else if let Some(prev) = lines.get(li.wrapping_sub(1)).filter(|_| li > 0) {
+                // Last row of the previous source line in the same block.
+                Some(resolve(prev, last_row_of(prev)))
+            } else {
+                // Last line of the previous block, shaped on demand.
+                let pb = block.checked_sub(1)?;
+                let range = self.document.blocks[pb].raw_lines.last()?.clone();
+                let shaped = self.shape_line(&range, pb, window);
+                Some(resolve(&shaped, last_row_of(&shaped)))
+            }
+        } else if pos.y < last_row_of(line) {
+            // A wrapped row below, still inside this source line.
+            Some(resolve(line, pos.y + px(GRID)))
+        } else if let Some(next) = lines.get(li + 1) {
+            // First row of the next source line in the same block.
+            Some(resolve(next, px(0.)))
+        } else {
+            // First line of the next block, shaped on demand.
+            let nb = block + 1;
+            let range = self.document.blocks.get(nb)?.raw_lines.first()?.clone();
+            let shaped = self.shape_line(&range, nb, window);
+            Some(resolve(&shaped, px(0.)))
+        }
+    }
+    fn vertical(&mut self, dir: isize, window: &mut Window) -> usize {
+        if let Some(target) = self.wrapped_vertical(dir, window) {
+            return target;
+        }
         let c = self.cursor();
         let current_block = self.document.block_at(c);
         let start = self.document.content[..c].rfind('\n').map_or(0, |i| i + 1);
@@ -204,31 +286,37 @@ impl Editor {
             self.document.blocks[target_block].range.start
         }
     }
-    pub(crate) fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-        let column = self.sel.preferred_column;
-        let target = self.vertical(-1);
-        let desired = self.sel.preferred_column.or(column);
+    pub(crate) fn up(&mut self, _: &Up, window: &mut Window, cx: &mut Context<Self>) {
+        let sticky = (self.sel.preferred_column, self.sel.preferred_x);
+        let target = self.vertical(-1, window);
+        let desired = (
+            self.sel.preferred_column.or(sticky.0),
+            self.sel.preferred_x.or(sticky.1),
+        );
         self.move_to(target, cx);
-        self.sel.preferred_column = desired;
+        (self.sel.preferred_column, self.sel.preferred_x) = desired;
     }
-    pub(crate) fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-        let column = self.sel.preferred_column;
-        let target = self.vertical(1);
-        let desired = self.sel.preferred_column.or(column);
+    pub(crate) fn down(&mut self, _: &Down, window: &mut Window, cx: &mut Context<Self>) {
+        let sticky = (self.sel.preferred_column, self.sel.preferred_x);
+        let target = self.vertical(1, window);
+        let desired = (
+            self.sel.preferred_column.or(sticky.0),
+            self.sel.preferred_x.or(sticky.1),
+        );
         self.move_to(target, cx);
-        self.sel.preferred_column = desired;
+        (self.sel.preferred_column, self.sel.preferred_x) = desired;
     }
-    pub(crate) fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        let target = self.vertical(-1);
-        let desired = self.sel.preferred_column;
+    pub(crate) fn select_up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
+        let target = self.vertical(-1, window);
+        let desired = (self.sel.preferred_column, self.sel.preferred_x);
         self.select_to(target, cx);
-        self.sel.preferred_column = desired;
+        (self.sel.preferred_column, self.sel.preferred_x) = desired;
     }
-    pub(crate) fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        let target = self.vertical(1);
-        let desired = self.sel.preferred_column;
+    pub(crate) fn select_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+        let target = self.vertical(1, window);
+        let desired = (self.sel.preferred_column, self.sel.preferred_x);
         self.select_to(target, cx);
-        self.sel.preferred_column = desired;
+        (self.sel.preferred_column, self.sel.preferred_x) = desired;
     }
     pub(crate) fn word_left(&mut self, _: &WordLeft, _: &mut Window, cx: &mut Context<Self>) {
         let target = if self.sel.range.is_empty() {
@@ -412,6 +500,7 @@ impl Editor {
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
             cx.notify();
         }
     }
@@ -425,6 +514,7 @@ impl Editor {
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
             cx.notify();
         }
     }
