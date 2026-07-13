@@ -265,11 +265,11 @@ pub struct Editor {
     open_menu: Option<OpenMenu>,
     /// Whether the File menu's "Open Recent" submenu is expanded.
     recent_submenu_open: bool,
-    /// Set when an undo/redo has mutated the document but its frame hasn't
-    /// painted yet. Rapid repeat presses are coalesced (ignored) while set, so
-    /// a burst of Ctrl+Z the user can't yet see doesn't over-apply. Cleared
-    /// each time the view reshapes (`ensure_shapes`).
-    pub(crate) awaiting_repaint: bool,
+    /// Acceleration state for held undo/redo: the time of the last history step,
+    /// its direction, and how long the current run is. Consecutive presses in
+    /// quick succession apply progressively more steps, so holding Ctrl+Z races
+    /// through history instead of crawling one step per keypress.
+    pub(crate) history_repeat: Option<(std::time::Instant, isize, u32)>,
 }
 
 impl Editor {
@@ -309,7 +309,7 @@ impl Editor {
             config,
             open_menu: None,
             recent_submenu_open: false,
-            awaiting_repaint: false,
+            history_repeat: None,
         }
     }
 

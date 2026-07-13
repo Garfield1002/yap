@@ -499,43 +499,81 @@ impl Editor {
             self.edit(self.sel.range.clone(), &t, mode, true, cx);
         }
     }
+    /// How many history steps this press should apply. Consecutive presses in
+    /// the same direction within a short window form a "run" whose length grows
+    /// the batch (1, 1, 2, 2, 4, …), so a held Ctrl+Z accelerates through
+    /// history instead of moving one step per repeat.
+    fn history_batch(&mut self, dir: isize) -> usize {
+        const GAP: std::time::Duration = std::time::Duration::from_millis(250);
+        let now = std::time::Instant::now();
+        let run = match self.history_repeat {
+            Some((last, d, run)) if d == dir && now.duration_since(last) < GAP => run + 1,
+            _ => 0,
+        };
+        self.history_repeat = Some((now, dir, run));
+        (1usize << (run / 2).min(6)).min(64)
+    }
+
+    /// Pops one transaction off `self.history.undo`, applies its inverse, and
+    /// mirrors it onto the redo stack. Returns whether a step was applied.
+    fn undo_once(&mut self) -> bool {
+        let Some(tx) = self.history.undo.pop() else {
+            return false;
+        };
+        let replaced = self.document.apply_inverse(&tx);
+        self.invalidate_shapes(&replaced);
+        self.sel.range = tx.before_selection.clone();
+        self.sel.reversed = tx.before_reversed;
+        self.history.redo.push(tx);
+        true
+    }
+
+    fn redo_once(&mut self) -> bool {
+        let Some(tx) = self.history.redo.pop() else {
+            return false;
+        };
+        let replaced = self.document.apply_forward(&tx);
+        self.invalidate_shapes(&replaced);
+        self.sel.range = tx.after_selection.clone();
+        self.sel.reversed = tx.after_reversed;
+        self.history.undo.push(tx);
+        true
+    }
+
     pub(crate) fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
-        // Coalesce a burst of presses the user hasn't seen the result of yet.
-        if self.awaiting_repaint {
-            return;
+        let steps = self.history_batch(-1);
+        let mut changed = false;
+        for _ in 0..steps {
+            if !self.undo_once() {
+                break;
+            }
+            changed = true;
         }
-        if let Some(tx) = self.history.undo.pop() {
-            let replaced = self.document.apply_inverse(&tx);
-            self.invalidate_shapes(&replaced);
-            self.sel.range = tx.before_selection.clone();
-            self.sel.reversed = tx.before_reversed;
-            self.history.redo.push(tx);
-            self.sync_revealed();
-            self.sel.ensure_caret_visible = true;
-            self.sel.preferred_column = None;
-            self.sel.preferred_x = None;
-            self.awaiting_repaint = true;
-            cx.notify();
+        if changed {
+            self.after_history_change(cx);
         }
     }
     pub(crate) fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
-        // Coalesce a burst of presses the user hasn't seen the result of yet.
-        if self.awaiting_repaint {
-            return;
+        let steps = self.history_batch(1);
+        let mut changed = false;
+        for _ in 0..steps {
+            if !self.redo_once() {
+                break;
+            }
+            changed = true;
         }
-        if let Some(tx) = self.history.redo.pop() {
-            let replaced = self.document.apply_forward(&tx);
-            self.invalidate_shapes(&replaced);
-            self.sel.range = tx.after_selection.clone();
-            self.sel.reversed = tx.after_reversed;
-            self.history.undo.push(tx);
-            self.sync_revealed();
-            self.sel.ensure_caret_visible = true;
-            self.sel.preferred_column = None;
-            self.sel.preferred_x = None;
-            self.awaiting_repaint = true;
-            cx.notify();
+        if changed {
+            self.after_history_change(cx);
         }
+    }
+
+    /// Shared selection/dirty bookkeeping after one or more undo/redo steps.
+    fn after_history_change(&mut self, cx: &mut Context<Self>) {
+        self.sync_revealed();
+        self.sel.ensure_caret_visible = true;
+        self.sel.preferred_column = None;
+        self.sel.preferred_x = None;
+        cx.notify();
     }
     pub(crate) fn save_now(&mut self) -> Result<(), String> {
         let path = self.path.as_ref().ok_or_else(|| "untitled".to_string())?;
