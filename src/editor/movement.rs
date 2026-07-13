@@ -500,6 +500,10 @@ impl Editor {
         }
     }
     pub(crate) fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        // Coalesce a burst of presses the user hasn't seen the result of yet.
+        if self.awaiting_repaint {
+            return;
+        }
         if let Some(tx) = self.history.undo.pop() {
             let replaced = self.document.apply_inverse(&tx);
             self.invalidate_shapes(&replaced);
@@ -510,10 +514,15 @@ impl Editor {
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
             self.sel.preferred_x = None;
+            self.awaiting_repaint = true;
             cx.notify();
         }
     }
     pub(crate) fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+        // Coalesce a burst of presses the user hasn't seen the result of yet.
+        if self.awaiting_repaint {
+            return;
+        }
         if let Some(tx) = self.history.redo.pop() {
             let replaced = self.document.apply_forward(&tx);
             self.invalidate_shapes(&replaced);
@@ -524,6 +533,7 @@ impl Editor {
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
             self.sel.preferred_x = None;
+            self.awaiting_repaint = true;
             cx.notify();
         }
     }

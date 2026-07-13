@@ -4,6 +4,9 @@ use super::*;
 
 impl Editor {
     pub(crate) fn ensure_shapes(&mut self, window: &mut Window, cx: &mut App) {
+        // This runs during layout for the frame about to paint, so any undo/redo
+        // that requested this frame is now visible: release the coalescing gate.
+        self.awaiting_repaint = false;
         let revealed = self.layout.revealed.clone();
         let caret = self.cursor();
         let palette = palette(self.theming.dark);
