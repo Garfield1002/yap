@@ -26,15 +26,18 @@ pub struct Palette {
     pub syntax: SyntaxPalette,
 }
 
+#[must_use] 
 pub fn color(value: u32) -> Hsla {
     rgb(value).into()
 }
 
-pub fn alpha(mut color: Hsla, alpha: f32) -> Hsla {
+#[must_use] 
+pub const fn alpha(mut color: Hsla, alpha: f32) -> Hsla {
     color.a = alpha;
     color
 }
 
+#[must_use] 
 pub fn palette(dark: bool) -> Palette {
     if dark {
         Palette {
@@ -83,7 +86,8 @@ pub fn palette(dark: bool) -> Palette {
     }
 }
 
-pub fn is_dark(appearance: WindowAppearance) -> bool {
+#[must_use] 
+pub const fn is_dark(appearance: WindowAppearance) -> bool {
     matches!(
         appearance,
         WindowAppearance::Dark | WindowAppearance::VibrantDark

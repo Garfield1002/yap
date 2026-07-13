@@ -21,9 +21,7 @@ impl Render for Editor {
         let filename = self
             .path
             .as_deref()
-            .and_then(Path::file_name)
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "untitled.md".into());
+            .and_then(Path::file_name).map_or_else(|| "untitled.md".into(), |name| name.to_string_lossy().into_owned());
         div()
             .size_full()
             .font(font(PROSE_FONT))
@@ -70,16 +68,16 @@ impl Render for Editor {
             .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::save))
             .on_action(cx.listener(|this: &mut Self, _: &NewDocument, window, cx| {
-                this.new_document_with_prompt(window, cx)
+                this.new_document_with_prompt(window, cx);
             }))
             .on_action(cx.listener(|this: &mut Self, _: &NewWindow, _, _| this.new_window()))
             .on_action(
                 cx.listener(|this: &mut Self, _: &OpenDocument, window, cx| {
-                    this.open_with_prompt(window, cx)
+                    this.open_with_prompt(window, cx);
                 }),
             )
             .on_action(cx.listener(|this: &mut Self, _: &SaveAs, window, cx| {
-                this.save_as_dialog(window, cx)
+                this.save_as_dialog(window, cx);
             }))
             .on_action(cx.listener(Self::bold))
             .on_action(cx.listener(Self::italic))
@@ -307,7 +305,7 @@ impl Render for Editor {
                                         button.bg(color(0xcf222e)).text_color(color(0xffffff))
                                     })
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.request_close(window, cx)
+                                        this.request_close(window, cx);
                                     }))
                                     .child("×"),
                             ),
@@ -403,7 +401,7 @@ impl Render for Editor {
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .on_click(cx.listener(|this, _, _, cx| {
-                                                this.load_conflict_disk(cx)
+                                                this.load_conflict_disk(cx);
                                             }))
                                             .child("Load Disk"),
                                     )
@@ -417,7 +415,7 @@ impl Render for Editor {
                                             .rounded(px(4.))
                                             .cursor_pointer()
                                             .on_click(cx.listener(|this, _, _, cx| {
-                                                this.keep_conflict_mine(cx)
+                                                this.keep_conflict_mine(cx);
                                             }))
                                             .child("Keep Mine"),
                                     ),

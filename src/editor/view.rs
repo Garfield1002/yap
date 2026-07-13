@@ -19,7 +19,7 @@ impl Editor {
                     .collect::<Vec<_>>();
                 cache.rendered_rows = rows(&lines);
                 cache.rendered = Some(lines);
-                self.document.counters.rendered_reshapes += 1
+                self.document.counters.rendered_reshapes += 1;
             }
             if let Some(lines) = cache.rendered.as_mut() {
                 for line in lines.iter_mut() {
@@ -69,7 +69,7 @@ impl Editor {
                     .collect::<Vec<_>>();
                 cache.raw_rows = rows(&lines);
                 cache.raw = Some(lines);
-                self.document.counters.raw_reshapes += 1
+                self.document.counters.raw_reshapes += 1;
             }
         }
     }

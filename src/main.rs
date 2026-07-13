@@ -15,29 +15,6 @@ use gpui::{
     WindowOptions, px, size,
 };
 
-
-#[cfg(test)]
-mod ui_tests {
-    use bulletmd_native_poc::shaping::{source_line_is_code, previous_word_boundary, next_word_boundary};
-    use bulletmd_native_poc::model::BlockKind;
-
-    #[test]
-    fn code_block_does_not_style_following_rows_as_code() {
-        assert!(source_line_is_code(BlockKind::Code, 20, 20));
-        assert!(!source_line_is_code(BlockKind::Code, 20, 21));
-        assert!(!source_line_is_code(BlockKind::Paragraph, 20, 10));
-    }
-
-    #[test]
-    fn word_navigation_uses_unicode_grapheme_boundaries() {
-        let text = "héllo  brave_world";
-        assert_eq!(next_word_boundary(text, 0), 8);
-        assert_eq!(previous_word_boundary(text, text.len()), 8);
-        assert_eq!(previous_word_boundary(text, 8), 0);
-        assert_eq!(next_word_boundary(text, 8), text.len());
-    }
-}
-
 fn main() {
     let argument = std::env::args_os().nth(1);
     let path = argument
@@ -134,8 +111,30 @@ fn main() {
                         true
                     }
                 });
-                cx.activate(true)
+                cx.activate(true);
             })
             .unwrap();
-    })
+    });
+}
+
+#[cfg(test)]
+mod ui_tests {
+    use bulletmd_native_poc::shaping::{source_line_is_code, previous_word_boundary, next_word_boundary};
+    use bulletmd_native_poc::model::BlockKind;
+
+    #[test]
+    fn code_block_does_not_style_following_rows_as_code() {
+        assert!(source_line_is_code(BlockKind::Code, 20, 20));
+        assert!(!source_line_is_code(BlockKind::Code, 20, 21));
+        assert!(!source_line_is_code(BlockKind::Paragraph, 20, 10));
+    }
+
+    #[test]
+    fn word_navigation_uses_unicode_grapheme_boundaries() {
+        let text = "héllo  brave_world";
+        assert_eq!(next_word_boundary(text, 0), 8);
+        assert_eq!(previous_word_boundary(text, text.len()), 8);
+        assert_eq!(previous_word_boundary(text, 8), 0);
+        assert_eq!(next_word_boundary(text, 8), text.len());
+    }
 }

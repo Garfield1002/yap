@@ -57,6 +57,7 @@ pub fn image_resource(src: &str, document_path: Option<&Path>) -> Resource {
     Resource::from(path)
 }
 
+#[must_use] 
 pub fn image_allocation_rows(data: &RenderImage) -> usize {
     let dimensions = data.size(0);
     let width = dimensions.width.0.max(1) as f32;
@@ -70,7 +71,8 @@ pub fn image_allocation_rows(data: &RenderImage) -> usize {
     rows
 }
 
-pub fn image_extension(format: ImageFormat) -> &'static str {
+#[must_use] 
+pub const fn image_extension(format: ImageFormat) -> &'static str {
     match format {
         ImageFormat::Png => "png",
         ImageFormat::Jpeg => "jpg",
@@ -82,6 +84,7 @@ pub fn image_extension(format: ImageFormat) -> &'static str {
     }
 }
 
+#[must_use] 
 pub fn source_line_is_code(kind: BlockKind, block_end: usize, line_start: usize) -> bool {
     kind == BlockKind::Code && line_start <= block_end
 }
@@ -134,6 +137,7 @@ pub enum RawRole {
     InlineCode,
 }
 
+#[must_use] 
 pub fn inline_code_background(is_code: bool, palette: Palette) -> Option<Hsla> {
     is_code.then_some(palette.code_bg)
 }
@@ -144,6 +148,7 @@ pub struct RawStyle {
     pub role: RawRole,
 }
 
+#[must_use] 
 pub fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
     let mut byte_styles = vec![
         RawStyle {
@@ -244,6 +249,7 @@ pub fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
         .collect()
 }
 
+#[must_use] 
 pub fn inline_code_ranges(text: &str) -> Vec<Range<usize>> {
     Parser::new(text)
         .into_offset_iter()
@@ -257,6 +263,7 @@ pub fn inline_code_ranges(text: &str) -> Vec<Range<usize>> {
         .collect()
 }
 
+#[must_use] 
 pub fn inline_code_ranges_from_spans(spans: &[RenderSpan]) -> Vec<Range<usize>> {
     let mut ranges: Vec<Range<usize>> = Vec::new();
     let mut offset = 0;
@@ -463,18 +470,16 @@ pub fn shape_render(
             .map(|s| {
                 let mut f = font(PROSE_FONT);
                 if line.level > 0 || s.style.strong {
-                    f.weight = FontWeight::BOLD
+                    f.weight = FontWeight::BOLD;
                 }
                 if s.style.italic {
-                    f.style = FontStyle::Italic
+                    f.style = FontStyle::Italic;
                 }
                 if s.style.code {
-                    f = font(MONO_FONT)
+                    f = font(MONO_FONT);
                 }
                 let color = if s.style.link {
                     palette.accent
-                } else if s.style.code {
-                    palette.fg
                 } else {
                     palette.fg
                 };
@@ -532,6 +537,7 @@ pub fn rows(lines: &[ShapedLine]) -> usize {
     lines.iter().map(line_rows).sum()
 }
 
+#[must_use] 
 pub fn line_rows(line: &ShapedLine) -> usize {
     if let Some(image) = &line.image {
         return image.rows;
@@ -542,6 +548,7 @@ pub fn line_rows(line: &ShapedLine) -> usize {
     wrapped.max(height_rows).max(1)
 }
 
+#[must_use] 
 pub fn grapheme_offset(s: &str, n: usize) -> usize {
     s.grapheme_indices(true).nth(n).map_or(s.len(), |(i, _)| i)
 }
@@ -566,6 +573,7 @@ pub fn word_class(grapheme: &str) -> WordClass {
     }
 }
 
+#[must_use] 
 pub fn previous_word_boundary(text: &str, at: usize) -> usize {
     let at = at.min(text.len());
     let graphemes = text[..at].grapheme_indices(true).collect::<Vec<_>>();
@@ -590,6 +598,7 @@ pub fn previous_word_boundary(text: &str, at: usize) -> usize {
     index
 }
 
+#[must_use] 
 pub fn next_word_boundary(text: &str, at: usize) -> usize {
     let at = at.min(text.len());
     let graphemes = text[at..]
@@ -612,6 +621,7 @@ pub fn next_word_boundary(text: &str, at: usize) -> usize {
         .map_or(text.len(), |(index, _)| *index)
 }
 
+#[must_use] 
 pub fn utf16_to_utf8(s: &str, n: usize) -> usize {
     let (mut u, mut b) = (0, 0);
     for c in s.chars() {
@@ -619,11 +629,12 @@ pub fn utf16_to_utf8(s: &str, n: usize) -> usize {
             break;
         }
         u += c.len_utf16();
-        b += c.len_utf8()
+        b += c.len_utf8();
     }
     b
 }
 
+#[must_use] 
 pub fn utf8_to_utf16(s: &str, n: usize) -> usize {
     s[..n.min(s.len())].encode_utf16().count()
 }

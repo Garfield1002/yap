@@ -36,6 +36,7 @@ pub struct MarkdownImage {
 }
 
 impl RenderLine {
+    #[must_use] 
     pub fn source_for_rendered(&self, offset: usize) -> usize {
         self.source_map
             .get(offset.min(self.source_map.len().saturating_sub(1)))
@@ -99,6 +100,7 @@ pub struct DocumentModel {
 }
 
 impl DocumentModel {
+    #[must_use] 
     pub fn new(content: String) -> Self {
         let mut this = Self {
             content,
@@ -112,6 +114,7 @@ impl DocumentModel {
         this
     }
 
+    #[must_use] 
     pub fn block_at(&self, offset: usize) -> usize {
         if self.blocks.is_empty() {
             return 0;
@@ -127,17 +130,20 @@ impl DocumentModel {
             })
     }
 
+    #[must_use] 
     pub fn touched_blocks(&self, range: &Range<usize>) -> Range<usize> {
         let first = self.block_at(range.start);
         let last = self.block_at(range.end);
         first.min(last)..first.max(last) + 1
     }
 
+    #[must_use] 
     pub fn raw(&self, block: usize) -> &str {
         let range = self.blocks[block].range.clone();
         &self.content[range]
     }
 
+    #[must_use] 
     pub fn raw_line(&self, range: &Range<usize>) -> &str {
         &self.content[range.clone()]
     }
@@ -145,6 +151,7 @@ impl DocumentModel {
     /// Source lines shown while a block is being edited. Blank rows are
     /// represented by their own blocks, so a block never borrows lines from
     /// the following source block.
+    #[must_use] 
     pub fn editing_lines(&self, index: usize, _caret: usize) -> Vec<Range<usize>> {
         self.blocks[index].raw_lines.clone()
     }
@@ -227,7 +234,7 @@ impl DocumentModel {
         }
 
         let transaction = EditTransaction {
-            range: range.clone(),
+            range,
             deleted,
             inserted: inserted.to_string(),
             before_selection,
@@ -300,7 +307,7 @@ fn empty_block(id: BlockId, offset: usize) -> Block {
     Block {
         id,
         range: offset..offset,
-        raw_lines: vec![offset..offset],
+        raw_lines: Vec::from([offset..offset]),
         kind: BlockKind::Paragraph,
         rendered: vec![RenderLine {
             text: String::new(),
@@ -466,8 +473,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
         let (prefix_len, visible_prefix, level) = match block.kind {
             BlockKind::Heading(level) => (level as usize + 1, String::new(), level),
             BlockKind::List => list_prefix(raw)
-                .map(|(len, prefix)| (len, prefix, 0))
-                .unwrap_or((0, String::new(), 0)),
+                .map_or((0, String::new(), 0), |(len, prefix)| (len, prefix, 0)),
             _ => (0, String::new(), 0),
         };
         if block.kind == BlockKind::Code {
@@ -823,10 +829,10 @@ mod tests {
         let third = model.blocks.last().unwrap().id;
         let second = model.blocks[2].range.clone();
         model.apply_edit(
-            second.start..second.end,
+            second.clone(),
             "```\nunclosed",
             EditMode::Enter,
-            second.clone(),
+            second,
             false,
         );
         assert_eq!(model.blocks.last().unwrap().id, third);

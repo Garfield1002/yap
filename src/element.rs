@@ -75,13 +75,14 @@ pub(crate) fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> 
         .layout
         .closest_index_for_position(local, px(GRID))
         .unwrap_or_else(|index| index);
-    if let Some(map) = &line.map {
-        map.get(display.min(map.len().saturating_sub(1)))
-            .copied()
-            .unwrap_or(line.source.start)
-    } else {
-        line.source.start + display.min(line.source.len())
-    }
+    line.map.as_ref().map_or_else(
+        || line.source.start + display.min(line.source.len()),
+        |map| {
+            map.get(display.min(map.len().saturating_sub(1)))
+                .copied()
+                .unwrap_or(line.source.start)
+        },
+    )
 }
 
 pub(crate) fn inline_code_decorations(
@@ -111,7 +112,7 @@ pub(crate) fn inline_code_decorations(
                     point(left, origin.y + y - px(VERTICAL_PADDING)),
                     size(
                         right - left,
-                        px(GRID + VERTICAL_PADDING * 2. + 2.),
+                        px(VERTICAL_PADDING.mul_add(2., GRID) + 2.),
                     ),
                 ));
             }
@@ -211,7 +212,7 @@ impl Element for DocumentElement {
         let rows = self.editor.read(cx).total_rows();
         let mut s = Style::default();
         s.size.width = px(DOCUMENT_WIDTH).into();
-        s.size.height = px(FIRST_BASELINE + rows as f32 * GRID + GRID).into();
+        s.size.height = px((rows as f32).mul_add(GRID, FIRST_BASELINE) + GRID).into();
         (window.request_layout(s, [], cx), ())
     }
     fn prepaint(
@@ -219,7 +220,7 @@ impl Element for DocumentElement {
         _: Option<&GlobalElementId>,
         _: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut (),
+        (): &mut (),
         window: &mut Window,
         cx: &mut App,
     ) -> Prepared {
@@ -248,7 +249,7 @@ impl Element for DocumentElement {
             };
             let block_rows = widget.rows();
             let block_top =
-                bounds.top() + px(FIRST_BASELINE + widget.top_row() as f32 * GRID - GRID);
+                bounds.top() + px((widget.top_row() as f32).mul_add(GRID, FIRST_BASELINE) - GRID);
             let block_bottom = block_top + px(block_rows as f32 * GRID);
             let active = e.layout.revealed.contains(&b.id);
             if let Some((source, screen_y)) = e.sel.pending_anchor
@@ -273,7 +274,7 @@ impl Element for DocumentElement {
                     }
                     let n = line_rows(line);
                     let baseline =
-                        bounds.top() + px(FIRST_BASELINE + (widget.top_row() + row) as f32 * GRID);
+                        bounds.top() + px(((widget.top_row() + row) as f32).mul_add(GRID, FIRST_BASELINE));
                     let pad = (px(GRID) - line.layout.ascent() - line.layout.descent()) / 2.;
                     let paint_top = baseline - pad - line.layout.ascent();
                     let cell_top = block_top + px(row as f32 * GRID);
@@ -351,21 +352,19 @@ impl Element for DocumentElement {
                         if line.source.start <= e.cursor()
                             && e.cursor() <= line.source.end
                             && e.sel.range.is_empty()
-                        {
-                            if let Some(p) = line.layout.position_for_index(pos, px(GRID)) {
+                            && let Some(p) = line.layout.position_for_index(pos, px(GRID)) {
                                 cursor = Some(fill(
                                     Bounds::new(
                                         point(paint_origin.x + p.x, paint_origin.y + p.y),
                                         size(px(1.5), px(GRID)),
                                     ),
                                     colors.accent,
-                                ))
+                                ));
                             }
-                        }
                         let overlap = e.sel.range.start.max(line.source.start)
                             ..e.sel.range.end.min(line.source.end);
-                        if overlap.start < overlap.end {
-                            if let (Some(a), Some(z)) = (
+                        if overlap.start < overlap.end
+                            && let (Some(a), Some(z)) = (
                                 line.layout.position_for_index(
                                     overlap.start - line.source.start,
                                     px(GRID),
@@ -382,9 +381,8 @@ impl Element for DocumentElement {
                                         ),
                                     ),
                                     colors.selection,
-                                ))
+                                ));
                             }
-                        }
                     }
                     lines.push(hit);
                     row += n;
@@ -407,7 +405,7 @@ impl Element for DocumentElement {
         _: Option<&GlobalElementId>,
         _: Option<&gpui::InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut (),
+        (): &mut (),
         p: &mut Prepared,
         window: &mut Window,
         cx: &mut App,
@@ -444,7 +442,7 @@ impl Element for DocumentElement {
                         alpha(colors.fg, editor.theming.dot_opacity),
                     )
                     .corner_radii(px(1.)),
-                )
+                );
             }
         }
 
@@ -473,7 +471,7 @@ impl Element for DocumentElement {
             }
         }
         for q in p.selection.drain(..) {
-            window.paint_quad(q)
+            window.paint_quad(q);
         }
         for slab in &p.inline_code_boxes {
             window.paint_quad(fill(*slab, colors.code_bg).corner_radii(px(4.)));
@@ -496,9 +494,9 @@ impl Element for DocumentElement {
                 let mut vertical_offset = vertical.offset();
                 let old_vertical = vertical_offset;
                 if q.bounds.bottom() > vertical_view.bottom() {
-                    vertical_offset.y -= q.bounds.bottom() - vertical_view.bottom()
+                    vertical_offset.y -= q.bounds.bottom() - vertical_view.bottom();
                 } else if q.bounds.top() < vertical_view.top() {
-                    vertical_offset.y += vertical_view.top() - q.bounds.top()
+                    vertical_offset.y += vertical_view.top() - q.bounds.top();
                 }
                 vertical_offset.y = vertical_offset
                     .y
@@ -513,9 +511,9 @@ impl Element for DocumentElement {
                 let mut horizontal_offset = horizontal.offset();
                 let old_horizontal = horizontal_offset;
                 if q.bounds.right() > horizontal_view.right() {
-                    horizontal_offset.x -= q.bounds.right() - horizontal_view.right()
+                    horizontal_offset.x -= q.bounds.right() - horizontal_view.right();
                 } else if q.bounds.left() < horizontal_view.left() {
-                    horizontal_offset.x += horizontal_view.left() - q.bounds.left()
+                    horizontal_offset.x += horizontal_view.left() - q.bounds.left();
                 }
                 horizontal_offset.x = horizontal_offset
                     .x
@@ -525,7 +523,7 @@ impl Element for DocumentElement {
                     window.request_animation_frame();
                 }
             }
-            window.paint_quad(q)
+            window.paint_quad(q);
         }
         let applied_anchor = p.anchor_delta.is_some();
         if let Some(delta) = p.anchor_delta.take() {
@@ -546,7 +544,7 @@ impl Element for DocumentElement {
             cx,
         );
         self.editor.update(cx, |e, _| {
-            e.layout.hit_lines = p.lines.clone();
+            e.layout.hit_lines.clone_from(&p.lines);
             e.layout.doc_bounds = Some(bounds);
             if had_cursor {
                 e.sel.ensure_caret_visible = false;

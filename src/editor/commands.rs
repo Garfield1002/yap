@@ -44,7 +44,7 @@ impl Editor {
         );
         cx.spawn(async move |this, cx| {
             if answer.await == Ok(0) {
-                let _ = this.update(cx, |editor, cx| editor.new_document(cx));
+                let _ = this.update(cx, Self::new_document);
             }
         })
         .detach();
@@ -64,7 +64,7 @@ impl Editor {
         );
         cx.spawn_in(window, async move |this, cx| {
             if answer.await == Ok(0) {
-                let _ = this.update_in(cx, |editor, window, cx| editor.open_dialog(window, cx));
+                let _ = this.update_in(cx, Self::open_dialog);
             }
         })
         .detach();
@@ -260,7 +260,7 @@ impl Editor {
     }
 
     pub(crate) fn quit(&mut self, _: &Quit, window: &mut Window, cx: &mut Context<Self>) {
-        self.request_close(window, cx)
+        self.request_close(window, cx);
     }
 
     pub fn start_watch(&mut self, cx: &mut Context<Self>) {
@@ -335,7 +335,7 @@ impl Editor {
         self.status = "loaded disk version".into();
     }
 
-    pub(crate) fn cursor(&self) -> usize {
+    pub(crate) const fn cursor(&self) -> usize {
         if self.sel.reversed {
             self.sel.range.start
         } else {

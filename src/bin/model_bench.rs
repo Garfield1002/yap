@@ -4,9 +4,7 @@ use bulletmd_native_poc::model::{DocumentModel, EditMode};
 
 fn main() {
     let path = std::env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/sample.md"));
+        .nth(1).map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/sample.md"), PathBuf::from);
     let content = fs::read_to_string(path).unwrap();
     let mut document = DocumentModel::new(content.clone());
     let started = Instant::now();

@@ -54,6 +54,7 @@ pub fn config_home() -> PathBuf {
     base.join("bulletmd")
 }
 
+#[must_use] 
 pub fn load_config() -> AppConfig {
     fs::read_to_string(config_home().join("state.json"))
         .ok()
@@ -86,8 +87,7 @@ fn save_pasted_image_in(dir: &Path, bytes: &[u8], extension: &str) -> Result<Pat
     fs::create_dir_all(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
+        .map_or(0, |duration| duration.as_millis());
     let path = dir.join(format!("paste-{millis}.{extension}"));
     fs::write(&path, bytes).map_err(|error| format!("{}: {error}", path.display()))?;
     Ok(path)
@@ -120,8 +120,7 @@ pub fn atomic_write(target: &Path, contents: &str) -> Result<(), String> {
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = fs::metadata(target)
-            .map(|metadata| metadata.permissions().mode() & 0o777)
-            .unwrap_or(0o644);
+            .map_or(0o644, |metadata| metadata.permissions().mode() & 0o777);
         fs::set_permissions(temporary.path(), fs::Permissions::from_mode(mode))
             .map_err(|error| format!("chmod: {error}"))?;
     }
@@ -132,6 +131,7 @@ pub fn atomic_write(target: &Path, contents: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[must_use] 
 pub fn modified(path: &Path) -> Option<SystemTime> {
     fs::metadata(path)
         .and_then(|metadata| metadata.modified())

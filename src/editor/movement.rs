@@ -53,9 +53,9 @@ impl Editor {
     pub(crate) fn select_to(&mut self, at: usize, cx: &mut Context<Self>) {
         let at = at.min(self.document.content.len());
         if self.sel.reversed {
-            self.sel.range.start = at
+            self.sel.range.start = at;
         } else {
-            self.sel.range.end = at
+            self.sel.range.end = at;
         }
         if self.sel.range.end < self.sel.range.start {
             self.sel.reversed = !self.sel.reversed;
@@ -131,7 +131,7 @@ impl Editor {
         } else {
             self.sel.range.start
         };
-        self.move_to(p, cx)
+        self.move_to(p, cx);
     }
     pub(crate) fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
         let p = if self.sel.range.is_empty() {
@@ -139,13 +139,13 @@ impl Editor {
         } else {
             self.sel.range.end
         };
-        self.move_to(p, cx)
+        self.move_to(p, cx);
     }
     pub(crate) fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.previous(self.cursor()), cx)
+        self.select_to(self.previous(self.cursor()), cx);
     }
     pub(crate) fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.next(self.cursor()), cx)
+        self.select_to(self.next(self.cursor()), cx);
     }
     fn vertical(&mut self, dir: isize) -> usize {
         let c = self.cursor();
@@ -175,11 +175,11 @@ impl Editor {
             s + grapheme_offset(&self.document.content[s..e], col)
         };
         let target_block = self.document.block_at(target);
-        if target_block != current_block {
+        if target_block == current_block {
+            target
+        } else {
             self.sel.preferred_column = Some(0);
             self.document.blocks[target_block].range.start
-        } else {
-            target
         }
     }
     pub(crate) fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
@@ -214,7 +214,7 @@ impl Editor {
         } else {
             self.sel.range.start
         };
-        self.move_to(target, cx)
+        self.move_to(target, cx);
     }
     pub(crate) fn word_right(&mut self, _: &WordRight, _: &mut Window, cx: &mut Context<Self>) {
         let target = if self.sel.range.is_empty() {
@@ -222,19 +222,19 @@ impl Editor {
         } else {
             self.sel.range.end
         };
-        self.move_to(target, cx)
+        self.move_to(target, cx);
     }
     pub(crate) fn select_word_left(&mut self, _: &SelectWordLeft, _: &mut Window, cx: &mut Context<Self>) {
         self.select_to(
             previous_word_boundary(&self.document.content, self.cursor()),
             cx,
-        )
+        );
     }
     pub(crate) fn select_word_right(&mut self, _: &SelectWordRight, _: &mut Window, cx: &mut Context<Self>) {
         self.select_to(
             next_word_boundary(&self.document.content, self.cursor()),
             cx,
-        )
+        );
     }
     pub(crate) fn delete_word_backward(
         &mut self,
@@ -257,29 +257,29 @@ impl Editor {
         } else {
             EditMode::Ordinary
         };
-        self.edit(range, "", mode, true, cx)
+        self.edit(range, "", mode, true, cx);
     }
     pub(crate) fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
         let p = self.document.content[..self.cursor()]
             .rfind('\n')
             .map_or(0, |i| i + 1);
-        self.move_to(p, cx)
+        self.move_to(p, cx);
     }
     pub(crate) fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
         let c = self.cursor();
         let p = self.document.content[c..]
             .find('\n')
             .map_or(self.document.content.len(), |i| c + i);
-        self.move_to(p, cx)
+        self.move_to(p, cx);
     }
     pub(crate) fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.sel.range = 0..self.document.content.len();
         self.sel.reversed = false;
         self.sync_revealed();
-        cx.notify()
+        cx.notify();
     }
     pub(crate) fn enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
-        self.edit(self.sel.range.clone(), "\n", EditMode::Enter, true, cx)
+        self.edit(self.sel.range.clone(), "\n", EditMode::Enter, true, cx);
     }
     pub(crate) fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
         let c = self.cursor();
@@ -298,7 +298,7 @@ impl Editor {
             self.sel.range.clone()
         };
         if !r.is_empty() {
-            self.edit(r, "", mode, true, cx)
+            self.edit(r, "", mode, true, cx);
         }
     }
     pub(crate) fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
@@ -318,14 +318,14 @@ impl Editor {
             self.sel.range.clone()
         };
         if !r.is_empty() {
-            self.edit(r, "", mode, true, cx)
+            self.edit(r, "", mode, true, cx);
         }
     }
     pub(crate) fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
         if !self.sel.range.is_empty() {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.document.content[self.sel.range.clone()].to_string(),
-            ))
+            ));
         }
     }
     pub(crate) fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
@@ -364,7 +364,7 @@ impl Editor {
                 } else {
                     EditMode::Ordinary
                 };
-            self.edit(self.sel.range.clone(), &t, mode, true, cx)
+            self.edit(self.sel.range.clone(), &t, mode, true, cx);
         }
     }
     pub(crate) fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
@@ -377,7 +377,7 @@ impl Editor {
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
-            cx.notify()
+            cx.notify();
         }
     }
     pub(crate) fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
@@ -390,7 +390,7 @@ impl Editor {
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
-            cx.notify()
+            cx.notify();
         }
     }
     pub(crate) fn save_now(&mut self) -> Result<(), String> {
@@ -429,7 +429,7 @@ impl Editor {
         if let Err(error) = self.save_now() {
             self.status = format!("save failed: {error}");
         }
-        cx.notify()
+        cx.notify();
     }
     pub(crate) fn escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
         let anchor = self.cursor();
@@ -443,6 +443,6 @@ impl Editor {
         self.sel.range =
             anchor.min(self.document.content.len())..anchor.min(self.document.content.len());
         window.blur();
-        cx.notify()
+        cx.notify();
     }
 }

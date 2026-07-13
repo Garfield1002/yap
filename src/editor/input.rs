@@ -35,7 +35,7 @@ impl EntityInputHandler for Editor {
         })
     }
     fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {
-        self.sel.marked = None
+        self.sel.marked = None;
     }
     fn replace_text_in_range(
         &mut self,
@@ -49,14 +49,14 @@ impl EntityInputHandler for Editor {
                 utf16_to_utf8(&self.document.content, r.start)
                     ..utf16_to_utf8(&self.document.content, r.end)
             })
-            .or(self.sel.marked.clone())
-            .unwrap_or(self.sel.range.clone());
+            .or_else(|| self.sel.marked.clone())
+            .unwrap_or_else(|| self.sel.range.clone());
         let mode = if text.contains('\n') || self.document.touched_blocks(&n).len() > 1 {
             EditMode::CrossBlock
         } else {
             EditMode::Ordinary
         };
-        self.edit(n, text, mode, true, cx)
+        self.edit(n, text, mode, true, cx);
     }
     fn replace_and_mark_text_in_range(
         &mut self,
@@ -71,15 +71,15 @@ impl EntityInputHandler for Editor {
                 utf16_to_utf8(&self.document.content, r.start)
                     ..utf16_to_utf8(&self.document.content, r.end)
             })
-            .or(self.sel.marked.clone())
-            .unwrap_or(self.sel.range.clone());
+            .or_else(|| self.sel.marked.clone())
+            .unwrap_or_else(|| self.sel.range.clone());
         let start = n.start;
         self.edit(n, text, EditMode::Ordinary, true, cx);
         self.sel.marked = (!text.is_empty()).then_some(start..start + text.len());
         let relative = selected
             .map(|r| utf16_to_utf8(text, r.start)..utf16_to_utf8(text, r.end))
             .unwrap_or(text.len()..text.len());
-        self.sel.range = start + relative.start..start + relative.end
+        self.sel.range = start + relative.start..start + relative.end;
     }
     fn bounds_for_range(
         &mut self,

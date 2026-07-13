@@ -16,3 +16,27 @@ unicode-segmentation = "1.12"
 [profile.release]
 lto = "thin"
 strip = true
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+# Curated allows: lints that fire pervasively on this codebase for little
+# real-world benefit. Kept explicit so the exceptions stay visible.
+cast_possible_truncation = "allow"   # pixel/row math intentionally narrows f32/usize
+cast_precision_loss = "allow"        # ditto for usize -> f32 in layout
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"         # usize -> isize index arithmetic in model.rs
+unreadable_literal = "allow"         # hex color literals read fine without separators
+needless_pass_by_ref_mut = "allow"   # GPUI action handlers dictate &mut Window signatures
+large_types_passed_by_value = "allow" # Palette is Copy; by-value keeps call sites clean
+too_many_lines = "allow"             # render/build chains are long by nature
+struct_excessive_bools = "allow"     # flag-bag state structs (Selection, SaveState, model)
+missing_errors_doc = "allow"          # not a public library
+missing_panics_doc = "allow"          # not a public library
+must_use_candidate = "allow"          # not a public library; #[must_use] noise
+module_name_repetitions = "allow"
+wildcard_imports = "allow"            # editor submodules re-import their parent via `use super::*`
+derive_partial_eq_without_eq = "allow" # gpui's actions! macro derives PartialEq without Eq
+single_range_in_vec_init = "allow"    # intentional single-element Vec<Range> for blank blocks
+unused_self = "allow"                 # uniform &self receiver on action-handler methods

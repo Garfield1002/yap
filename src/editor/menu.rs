@@ -58,7 +58,7 @@ impl Editor {
                 cx.notify();
             }
             MenuCommand::SetDotOpacity(percent) => {
-                self.theming.dot_opacity = (percent as f32 / 100.).clamp(0.0, 0.30);
+                self.theming.dot_opacity = (f32::from(percent) / 100.).clamp(0.0, 0.30);
                 self.config.dot_opacity = self.theming.dot_opacity;
                 if let Err(error) = persistence::save_config(&self.config) {
                     self.status = format!("appearance save failed: {error}");
@@ -104,7 +104,7 @@ impl Editor {
 
     fn recent_menu_item(
         index: usize,
-        path: String,
+        path: &str,
         colors: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -201,14 +201,14 @@ impl Editor {
             .into_iter()
             .take(12)
             .enumerate()
-            .map(|(index, path)| Self::recent_menu_item(index, path, colors, cx).into_any_element())
+            .map(|(index, path)| Self::recent_menu_item(index, &path, colors, cx).into_any_element())
             .collect::<Vec<_>>();
         let dot_items = [0, 6, 12, 18, 24, 30]
             .into_iter()
             .map(|percent| {
                 Self::dot_menu_item(
                     percent,
-                    (dot_opacity * 100. - percent as f32).abs() < 0.5,
+                    dot_opacity.mul_add(100., -f32::from(percent)).abs() < 0.5,
                     colors,
                     cx,
                 )

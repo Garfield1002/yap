@@ -43,9 +43,12 @@ mod render;
 mod view;
 
 
-/// The BulletMD logo as a color SVG image, selecting the light-on-dark or
-/// dark-on-light variant for the current theme. The asset cache dedupes on the
-/// byte hash, so building this per render only rasterizes once.
+/// The `BulletMD` logo as a color SVG image.
+///
+/// Selects the light-on-dark or dark-on-light variant for the current theme.
+/// The asset cache dedupes on the byte hash, so building this per render only
+/// rasterizes once.
+#[must_use] 
 pub fn logo_image(dark: bool) -> Arc<Image> {
     let bytes: &[u8] = if dark {
         include_bytes!("../../assets/logo_white.svg")
@@ -121,7 +124,8 @@ pub enum ThemePreference {
 }
 
 impl ThemePreference {
-    pub fn name(self) -> &'static str {
+    #[must_use] 
+    pub const fn name(self) -> &'static str {
         match self {
             Self::System => "system",
             Self::Light => "light",
@@ -129,7 +133,8 @@ impl ThemePreference {
         }
     }
 
-    pub fn dark(self, appearance: WindowAppearance) -> bool {
+    #[must_use] 
+    pub const fn dark(self, appearance: WindowAppearance) -> bool {
         match self {
             Self::System => is_dark(appearance),
             Self::Light => false,
@@ -189,7 +194,7 @@ pub(crate) struct Selection {
 
 impl Default for Selection {
     fn default() -> Self {
-        Selection {
+        Self {
             range: 0..0,
             reversed: false,
             marked: None,
@@ -263,7 +268,7 @@ impl Editor {
     ) -> Self {
         let document = DocumentModel::new(content.clone());
         let first = document.blocks[0].id;
-        Editor {
+        Self {
             path,
             focus: cx.focus_handle(),
             document,
@@ -294,12 +299,14 @@ impl Editor {
     }
 
     /// The focus handle, for the window to focus the editor on open.
-    pub fn focus(&self) -> &FocusHandle {
+    #[must_use] 
+    pub const fn focus(&self) -> &FocusHandle {
         &self.focus
     }
 
     /// Whether the document has unsaved changes.
-    pub fn is_dirty(&self) -> bool {
+    #[must_use] 
+    pub const fn is_dirty(&self) -> bool {
         self.save.dirty
     }
 }
