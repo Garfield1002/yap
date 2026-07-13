@@ -9,8 +9,8 @@ The document remains rendered until the cursor enters a block. The active block 
 - Click a rendered block to activate it.
 - Type ordinary text and punctuation.
 - Save the result with the standard shortcut.
-### Stable rhythm
 
+### Stable rhythm
 Every baseline belongs to a twenty-four pixel grid. Larger headings occupy additional rows while preserving the common baseline phase.
 
 ![A grid-aligned BulletMD image fixture](sample-image.svg)
@@ -31,7 +31,6 @@ The first paragraph contains *gentle emphasis*, the second contains **strong emp
 4. Return to the rendered page.
 
 ### Notes on layout
-
 Text shaping determines the real glyph positions. Cursor placement, selection, and hit testing use those positions instead of a second approximation.
 
 - Blocks begin on the shared grid.
@@ -55,11 +54,9 @@ This prototype deliberately implements only the smallest coherent set. It is evi
 - Markdown block rendering
 
 ### Paragraph one
-
 Clear constraints make experiments useful. A narrow prototype can fail honestly and still answer the important question.
 
 ## Working section two
-
 The benchmark uses proportional set size because resident set size counts shared mappings in every process that maps them.
 
 Startup is measured inside the application from process entry to the first interactive frame, avoiding guesses based on process discovery.

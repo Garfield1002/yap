@@ -11,7 +11,7 @@ use std::{
 #[allow(unused_imports)]
 use crate::{
     model::{
-        BlockId, BlockKind, DocumentModel, EditMode, EditTransaction,
+        BlockId, BlockKind, DocumentModel, EditMode, EditTransaction, ListContinuation, auto_close,
     },
     layout::{DOCUMENT_WIDTH, GRID, PROSE_FONT},
     persistence::{self, AppConfig},

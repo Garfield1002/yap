@@ -44,6 +44,7 @@ impl EntityInputHandler for Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let explicit = r.is_some();
         let n = r
             .map(|r| {
                 utf16_to_utf8(&self.document.content, r.start)
@@ -51,6 +52,15 @@ impl EntityInputHandler for Editor {
             })
             .or_else(|| self.sel.marked.clone())
             .unwrap_or_else(|| self.sel.range.clone());
+        // Auto-close delimiters on a genuinely typed character (not IME
+        // composition or a ranged programmatic replacement).
+        if !explicit && self.sel.marked.is_none() {
+            let preceding = self.document.content[..n.start].chars().next_back();
+            if let Some(close) = auto_close(text, preceding) {
+                self.close_delimiter(n, text, close, cx);
+                return;
+            }
+        }
         let mode = if text.contains('\n') || self.document.touched_blocks(&n).len() > 1 {
             EditMode::CrossBlock
         } else {

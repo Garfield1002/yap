@@ -125,6 +125,28 @@ impl Editor {
         cx.notify();
     }
 
+    /// Inserts an auto-closed delimiter pair. A bare caret lands between the
+    /// delimiters; a non-empty range is wrapped and stays selected.
+    pub(crate) fn close_delimiter(
+        &mut self,
+        range: Range<usize>,
+        opening: &str,
+        close: char,
+        cx: &mut Context<Self>,
+    ) {
+        let selected = self.document.content[range.clone()].to_string();
+        let text = format!("{opening}{selected}{close}");
+        let mode = if selected.contains('\n') || self.document.touched_blocks(&range).len() > 1 {
+            EditMode::CrossBlock
+        } else {
+            EditMode::Ordinary
+        };
+        let inner = range.start + opening.len();
+        self.edit(range, &text, mode, true, cx);
+        self.sel.range = inner..inner + selected.len();
+        cx.notify();
+    }
+
     pub(crate) fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
         let p = if self.sel.range.is_empty() {
             self.previous(self.cursor())
@@ -279,6 +301,19 @@ impl Editor {
         cx.notify();
     }
     pub(crate) fn enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
+        if self.sel.range.is_empty() {
+            match self.document.list_continuation(self.cursor()) {
+                Some(ListContinuation::Clear(range)) => {
+                    self.edit(range, "", EditMode::CrossBlock, true, cx);
+                    return;
+                }
+                Some(ListContinuation::Continue(text)) => {
+                    self.edit(self.sel.range.clone(), &text, EditMode::CrossBlock, true, cx);
+                    return;
+                }
+                None => {}
+            }
+        }
         self.edit(self.sel.range.clone(), "\n", EditMode::Enter, true, cx);
     }
     pub(crate) fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {

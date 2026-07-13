@@ -301,6 +301,105 @@ impl DocumentModel {
             .replace_range(tx.range.start..end, &tx.inserted);
         self.global_reparse();
     }
+
+    /// What pressing Enter should do when the caret sits on a list item line.
+    ///
+    /// Returns `None` when the caret's line is not a list item (or is inside a
+    /// code block), in which case the caller inserts a plain newline.
+    #[must_use]
+    pub fn list_continuation(&self, cursor: usize) -> Option<ListContinuation> {
+        if self.blocks[self.block_at(cursor)].kind == BlockKind::Code {
+            return None;
+        }
+        list_continuation(&self.content, cursor)
+    }
+}
+
+/// The outcome of pressing Enter on a list item line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ListContinuation {
+    /// Insert this text (a newline followed by the next item's marker prefix).
+    Continue(String),
+    /// The current item is empty: clear this byte range to exit the list.
+    Clear(Range<usize>),
+}
+
+/// Computes the [`ListContinuation`] for `cursor` within `content`. Pure and
+/// standalone so it can be unit-tested without a full document.
+#[must_use]
+fn list_continuation(content: &str, cursor: usize) -> Option<ListContinuation> {
+    let line_start = content[..cursor].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = content[cursor..]
+        .find('\n')
+        .map_or(content.len(), |i| cursor + i);
+    let line = &content[line_start..line_end];
+    let (prefix_len, continuation) = parse_list_marker(line)?;
+    if line[prefix_len..].trim().is_empty() {
+        return Some(ListContinuation::Clear(line_start..line_end));
+    }
+    Some(ListContinuation::Continue(format!("\n{continuation}")))
+}
+
+/// Parses a leading list marker (`-`, `*`, `+`, or `<digits>.`/`<digits>)`,
+/// with an optional `[ ]`/`[x]` task box) from `line`.
+///
+/// Returns the byte length of the whole marker prefix (indent through the space
+/// before the item content) and the prefix to start the next line with: the
+/// same marker for bullets, the incremented number for ordered lists, and a
+/// reset `[ ]` box when the source item had one.
+fn parse_list_marker(line: &str) -> Option<(usize, String)> {
+    let indent_len = line.len() - line.trim_start_matches([' ', '\t']).len();
+    let indent = &line[..indent_len];
+    let rest = &line[indent_len..];
+
+    let (bullet_len, next_bullet) = match rest.chars().next()? {
+        c @ ('-' | '*' | '+') => (1, c.to_string()),
+        '0'..='9' => {
+            let digits_len = rest.find(|c: char| !c.is_ascii_digit())?;
+            let delimiter = rest[digits_len..].chars().next()?;
+            if delimiter != '.' && delimiter != ')' {
+                return None;
+            }
+            let number: u64 = rest[..digits_len].parse().ok()?;
+            (digits_len + 1, format!("{}{delimiter}", number.saturating_add(1)))
+        }
+        _ => return None,
+    };
+
+    let after_bullet = &rest[bullet_len..];
+    let spaces_len = after_bullet.len() - after_bullet.trim_start_matches([' ', '\t']).len();
+    if spaces_len == 0 {
+        return None;
+    }
+
+    let mut prefix_len = indent_len + bullet_len + spaces_len;
+    let after_marker = &line[prefix_len..];
+    let task = ["[ ] ", "[x] ", "[X] "]
+        .iter()
+        .any(|box_| after_marker.starts_with(box_));
+    if task {
+        prefix_len += 4;
+    }
+
+    let continuation = format!("{indent}{next_bullet} {}", if task { "[ ] " } else { "" });
+    Some((prefix_len, continuation))
+}
+
+/// The closing delimiter to auto-insert after typing `opening`.
+///
+/// `preceding` is the character immediately before the caret. Returns `None`
+/// when `opening` is not an auto-closed delimiter, or for `_` when not preceded
+/// by whitespace (so it stays usable mid-word for `snake_case`).
+#[must_use]
+pub fn auto_close(opening: &str, preceding: Option<char>) -> Option<char> {
+    Some(match opening {
+        "(" => ')',
+        "[" => ']',
+        "{" => '}',
+        "*" => '*',
+        "_" if preceding.is_none_or(char::is_whitespace) => '_',
+        _ => return None,
+    })
 }
 
 fn empty_block(id: BlockId, offset: usize) -> Block {
@@ -937,5 +1036,94 @@ mod tests {
         assert_eq!(model.blocks[1].kind, BlockKind::Blank);
         assert_eq!(model.blocks[1].range, 8..8);
         assert_eq!(model.editing_lines(1, 8), vec![8..8]);
+    }
+
+    fn continue_text(content: &str, cursor: usize) -> Option<String> {
+        match list_continuation(content, cursor) {
+            Some(ListContinuation::Continue(text)) => Some(text),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn continues_unordered_bullets() {
+        let content = "- one";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n- "));
+        let content = "* one";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n* "));
+        let content = "+ one";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n+ "));
+    }
+
+    #[test]
+    fn increments_ordered_markers() {
+        let content = "1. one";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n2. "));
+        let content = "9) nine";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n10) "));
+    }
+
+    #[test]
+    fn preserves_indent_and_task_box() {
+        let content = "  - one";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n  - "));
+        let content = "- [x] done";
+        assert_eq!(continue_text(content, content.len()).as_deref(), Some("\n- [ ] "));
+    }
+
+    #[test]
+    fn continues_from_mid_line_caret() {
+        // Splitting a non-empty item still carries the marker to the new line.
+        let content = "- onetwo";
+        assert_eq!(continue_text(content, 5).as_deref(), Some("\n- "));
+    }
+
+    #[test]
+    fn empty_item_clears_marker() {
+        let content = "- ";
+        assert_eq!(
+            list_continuation(content, content.len()),
+            Some(ListContinuation::Clear(0..2))
+        );
+        let content = "- [ ] ";
+        assert_eq!(
+            list_continuation(content, content.len()),
+            Some(ListContinuation::Clear(0..6))
+        );
+    }
+
+    #[test]
+    fn non_list_lines_have_no_continuation() {
+        assert_eq!(list_continuation("plain text", 5), None);
+        assert_eq!(list_continuation("-no space", 4), None);
+        assert_eq!(list_continuation("# heading", 4), None);
+    }
+
+    #[test]
+    fn continuation_uses_the_caret_line() {
+        let content = "- one\nplain";
+        assert_eq!(continue_text(content, content.len()), None);
+        assert_eq!(continue_text(content, 5).as_deref(), Some("\n- "));
+    }
+
+    #[test]
+    fn auto_close_pairs() {
+        assert_eq!(auto_close("(", None), Some(')'));
+        assert_eq!(auto_close("[", Some('a')), Some(']'));
+        assert_eq!(auto_close("{", Some('a')), Some('}'));
+        assert_eq!(auto_close("*", Some('a')), Some('*'));
+    }
+
+    #[test]
+    fn underscore_only_closes_after_whitespace() {
+        assert_eq!(auto_close("_", None), Some('_'));
+        assert_eq!(auto_close("_", Some(' ')), Some('_'));
+        assert_eq!(auto_close("_", Some('a')), None);
+    }
+
+    #[test]
+    fn non_delimiters_do_not_auto_close() {
+        assert_eq!(auto_close("a", None), None);
+        assert_eq!(auto_close(")", None), None);
     }
 }
