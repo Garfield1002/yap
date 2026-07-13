@@ -226,7 +226,7 @@ impl DocumentModel {
             let old_end = self.blocks[region.end - 1].range.end;
             let new_end = (old_end as isize + delta).max(start as isize) as usize;
             invalidated.extend(self.blocks[region.clone()].iter().map(|block| block.id));
-            self.local_resegment(region, start..new_end);
+            let _ = self.local_resegment(region, start..new_end);
         } else {
             let index = touched.start;
             let block = &mut self.blocks[index];
@@ -256,7 +256,10 @@ impl DocumentModel {
         (transaction, invalidated)
     }
 
-    fn local_resegment(&mut self, old_blocks: Range<usize>, source: Range<usize>) {
+    /// Reparses `source` into fresh blocks, splicing them in for `old_blocks`
+    /// and shifting the blocks that follow. Returns the index range the fresh
+    /// blocks now occupy.
+    fn local_resegment(&mut self, old_blocks: Range<usize>, source: Range<usize>) -> Range<usize> {
         let old_end = self.blocks[old_blocks.end - 1].range.end;
         let shift = source.end as isize - old_end as isize;
         let mut replacement = parse_region(
@@ -282,6 +285,7 @@ impl DocumentModel {
             shift_render_maps(&mut later.rendered, shift);
         }
         self.counters.local_reparses += 1;
+        old_blocks.start..replaced_end
     }
 
     pub fn global_reparse(&mut self) {
@@ -300,17 +304,30 @@ impl DocumentModel {
         self.counters.parsed_blocks += parsed;
     }
 
-    pub fn apply_inverse(&mut self, tx: &EditTransaction) {
-        let end = tx.range.start + tx.inserted.len();
-        self.content.replace_range(tx.range.start..end, &tx.deleted);
-        self.global_reparse();
+    /// Replaces `range` with `text`, reparsing only the touched block region
+    /// (like an edit) instead of the whole document. Returns the ids of the
+    /// blocks that were replaced, so the caller can drop just their shape
+    /// caches; the fresh blocks carry new ids and reshape on the next frame.
+    fn apply_replace(&mut self, range: Range<usize>, text: &str) -> Vec<BlockId> {
+        let touched = self.touched_blocks(&range);
+        let old_ids: Vec<BlockId> = self.blocks[touched.clone()].iter().map(|b| b.id).collect();
+        let delta = text.len() as isize - range.len() as isize;
+        let start = self.blocks[touched.start].range.start;
+        let old_end = self.blocks[touched.end - 1].range.end;
+        let new_end = (old_end as isize + delta).max(start as isize) as usize;
+        self.content.replace_range(range, text);
+        let _ = self.local_resegment(touched, start..new_end);
+        old_ids
     }
 
-    pub fn apply_forward(&mut self, tx: &EditTransaction) {
+    pub fn apply_inverse(&mut self, tx: &EditTransaction) -> Vec<BlockId> {
+        let end = tx.range.start + tx.inserted.len();
+        self.apply_replace(tx.range.start..end, &tx.deleted)
+    }
+
+    pub fn apply_forward(&mut self, tx: &EditTransaction) -> Vec<BlockId> {
         let end = tx.range.start + tx.deleted.len();
-        self.content
-            .replace_range(tx.range.start..end, &tx.inserted);
-        self.global_reparse();
+        self.apply_replace(tx.range.start..end, &tx.inserted)
     }
 
     /// What pressing Enter should do when the caret sits on a list item line.
@@ -1031,6 +1048,54 @@ mod tests {
         model.apply_edit(0..0, "l", EditMode::Ordinary, 0..0, false);
         assert_eq!(model.content, "lark");
         assert_eq!(model.raw(0), "lark");
+    }
+
+    /// Block structure (kind + byte range per block) for structural comparison.
+    fn structure(model: &DocumentModel) -> Vec<(BlockKind, Range<usize>)> {
+        model
+            .blocks
+            .iter()
+            .map(|b| (b.kind, b.range.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn undo_redo_reparses_incrementally_and_matches_a_full_parse() {
+        // A structural edit: a blank line that splits one paragraph in two.
+        let mut model = DocumentModel::new("one two three".into());
+        let before = structure(&model);
+        let (tx, _) = model.apply_edit(3..4, "\n\n", EditMode::Enter, 3..3, false);
+        assert_eq!(model.content, "one\n\ntwo three");
+        assert!(model.blocks.len() > 1);
+
+        let global = model.counters.global_reparses;
+        let replaced = model.apply_inverse(&tx);
+        // Undo reparsed only the touched region, never the whole document.
+        assert_eq!(model.counters.global_reparses, global);
+        assert!(!replaced.is_empty());
+        assert_eq!(model.content, "one two three");
+        // The incrementally rebuilt blocks match a fresh full parse.
+        assert_eq!(structure(&model), before);
+        assert_eq!(structure(&model), structure(&DocumentModel::new(model.content.clone())));
+
+        model.apply_forward(&tx);
+        assert_eq!(model.content, "one\n\ntwo three");
+        assert_eq!(structure(&model), structure(&DocumentModel::new(model.content.clone())));
+    }
+
+    #[test]
+    fn undo_of_a_block_merge_restores_both_blocks() {
+        // Backspace at a block boundary fuses two paragraphs; undo must split.
+        let mut model = DocumentModel::new("alpha\n\nbeta".into());
+        let before = structure(&model);
+        let (tx, _) = model.apply_edit(5..7, "", EditMode::FuseNext, 7..7, false);
+        assert_eq!(model.content, "alphabeta");
+        assert_eq!(model.blocks.len(), 1);
+
+        model.apply_inverse(&tx);
+        assert_eq!(model.content, "alpha\n\nbeta");
+        assert_eq!(structure(&model), before);
+        assert_eq!(structure(&model), structure(&DocumentModel::new(model.content.clone())));
     }
 
     #[test]

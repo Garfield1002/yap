@@ -40,6 +40,15 @@ impl Editor {
         self.layout.revealed = next;
     }
 
+    /// Drops the shape caches for blocks that were replaced by a reparse. The
+    /// fresh blocks that took their place carry new ids and so have no cache
+    /// entry, reshaping on the next frame; unaffected blocks keep theirs.
+    pub(crate) fn invalidate_shapes(&mut self, replaced: &[BlockId]) {
+        for id in replaced {
+            self.layout.shapes.remove(id);
+        }
+    }
+
     pub(crate) fn move_to(&mut self, at: usize, cx: &mut Context<Self>) {
         let at = at.min(self.document.content.len());
         self.sel.range = at..at;
@@ -492,29 +501,29 @@ impl Editor {
     }
     pub(crate) fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(tx) = self.history.undo.pop() {
-            self.document.apply_inverse(&tx);
+            let replaced = self.document.apply_inverse(&tx);
+            self.invalidate_shapes(&replaced);
             self.sel.range = tx.before_selection.clone();
             self.sel.reversed = tx.before_reversed;
             self.history.redo.push(tx);
-            self.layout.shapes.clear();
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
-        self.sel.preferred_x = None;
+            self.sel.preferred_x = None;
             cx.notify();
         }
     }
     pub(crate) fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(tx) = self.history.redo.pop() {
-            self.document.apply_forward(&tx);
+            let replaced = self.document.apply_forward(&tx);
+            self.invalidate_shapes(&replaced);
             self.sel.range = tx.after_selection.clone();
             self.sel.reversed = tx.after_reversed;
             self.history.undo.push(tx);
-            self.layout.shapes.clear();
             self.sync_revealed();
             self.sel.ensure_caret_visible = true;
             self.sel.preferred_column = None;
-        self.sel.preferred_x = None;
+            self.sel.preferred_x = None;
             cx.notify();
         }
     }
