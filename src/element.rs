@@ -11,8 +11,8 @@ use crate::{
     theme::{alpha, color, palette},
 };
 use gpui::{
-    App, Bounds, Element, ElementId, ElementInputHandler, Entity, GlobalElementId, Hsla,
-    IntoElement, LayoutId, PaintQuad,
+    App, Bounds, CursorStyle, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
+    Hitbox, HitboxBehavior, Hsla, IntoElement, LayoutId, PaintQuad,
     Pixels, Point, RenderImage, SharedString, Style, TextAlign, TextRun, Window, WrappedLine,
     fill, font, point, px, size,
 };
@@ -90,6 +90,38 @@ pub(crate) fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> 
                 .unwrap_or(line.source.start)
         },
     )
+}
+
+/// Byte offsets of the blank region reserved for the checkbox within a task
+/// line's rendered text, i.e. just past the `" - "` bullet up to the trailing
+/// space (see `render` in `model.rs`).
+const TASK_BOX_START: usize = 3;
+const TASK_BOX_END: usize = 7;
+
+/// The square drawn for a task item's checkbox on line `line`, or `None` when
+/// the line is not a task item. The square is centred — both horizontally
+/// within the blank region reserved after the `" - "` bullet, and vertically on
+/// the text glyphs so it aligns with the text rather than the grid row.
+pub(crate) fn checkbox_bounds(line: &HitLine) -> Option<Bounds<Pixels>> {
+    line.task.as_ref()?;
+    let ascent = f32::from(line.layout.ascent());
+    let descent = f32::from(line.layout.descent());
+    // Size the box to roughly the font's x-height and rest it just below the
+    // baseline (dipping slightly into the descent) so it lines up with the
+    // lowercase letters beside it. `paint_origin.y` is the top of the glyph
+    // body; the baseline sits an `ascent` below it.
+    let side = ascent * 0.72;
+    let baseline = f32::from(line.paint_origin.y) + ascent;
+    let box_top = descent.mul_add(0.5, baseline) - side;
+    let index_x = |i| {
+        line.layout
+            .position_for_index(i, px(GRID))
+            .map_or(0., |p| f32::from(p.x))
+    };
+    // Centre the square horizontally within the reserved blank region.
+    let region_mid = f32::midpoint(index_x(TASK_BOX_START), index_x(TASK_BOX_END));
+    let left = f32::from(line.paint_origin.x) + region_mid - side / 2.;
+    Some(Bounds::new(point(px(left), px(box_top)), size(px(side), px(side))))
 }
 
 pub(crate) fn inline_code_decorations(
@@ -183,6 +215,9 @@ pub struct Prepared {
     pub selection: Vec<PaintQuad>,
     pub visible: Bounds<Pixels>,
     pub anchor_delta: Option<Pixels>,
+    /// Task checkboxes to paint, each with a hitbox (for the pointer cursor) and
+    /// its checked state.
+    pub checkboxes: Vec<(Hitbox, bool)>,
 }
 
 pub struct PreparedImage {
@@ -406,6 +441,14 @@ impl Element for DocumentElement {
                 }
             }
         }
+        let checkboxes = lines
+            .iter()
+            .filter_map(|line| {
+                let checked = line.task.as_ref()?.checked;
+                let bounds = checkbox_bounds(line)?;
+                Some((window.insert_hitbox(bounds, HitboxBehavior::Normal), checked))
+            })
+            .collect();
         Prepared {
             lines,
             code_slabs,
@@ -415,6 +458,7 @@ impl Element for DocumentElement {
             selection: selections,
             visible,
             anchor_delta,
+            checkboxes,
         }
     }
     fn paint(
@@ -507,6 +551,17 @@ impl Element for DocumentElement {
                 window,
                 cx,
             );
+        }
+        for (hitbox, checked) in &p.checkboxes {
+            let outer = hitbox.bounds;
+            window.paint_quad(fill(outer, colors.code_border).corner_radii(px(4.)));
+            let inner = Bounds::from_corners(
+                point(outer.left() + px(1.5), outer.top() + px(1.5)),
+                point(outer.right() - px(1.5), outer.bottom() - px(1.5)),
+            );
+            let inner_color = if *checked { colors.accent } else { colors.code_bg };
+            window.paint_quad(fill(inner, inner_color).corner_radii(px(3.)));
+            window.set_cursor_style(CursorStyle::PointingHand, hitbox);
         }
         let had_cursor = p.cursor.is_some();
         if let Some(q) = p.cursor.take() {

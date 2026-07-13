@@ -75,16 +75,19 @@ impl Editor {
             .map_or_else(|| self.cursor(), |line| source_offset_for_hit(line, p))
     }
     /// The task checkbox under `p`, if the point falls on a rendered task
-    /// item's `☐`/`☑` glyph.
+    /// item's painted checkbox square.
     fn task_box_at(&self, p: Point<Pixels>) -> Option<TaskMark> {
-        let line = self.layout.hit_lines.iter().find(|line| {
-            line.task.is_some() && p.y >= line.bounds.top() && p.y <= line.bounds.bottom()
-        })?;
-        // The checkbox glyph is the line's first character (`☐`/`☑`, 3 bytes).
-        let right = line.paint_origin.x + line.layout.position_for_index(3, px(GRID))?.x;
-        (p.x >= line.paint_origin.x - px(3.) && p.x <= right + px(4.))
-            .then(|| line.task.clone())
-            .flatten()
+        self.layout.hit_lines.iter().find_map(|line| {
+            let b = checkbox_bounds(line)?;
+            // Pad the target a little so the box is comfortable to click.
+            let pad = px(3.);
+            (p.x >= b.left() - pad
+                && p.x <= b.right() + pad
+                && p.y >= b.top() - pad
+                && p.y <= b.bottom() + pad)
+                .then(|| line.task.clone())
+                .flatten()
+        })
     }
 
     fn toggle_task(&mut self, mark: &TaskMark, cx: &mut Context<Self>) {

@@ -589,9 +589,11 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             BlockKind::Heading(level) => (level as usize + 1, String::new(), level),
             BlockKind::List => task.clone().map_or_else(
                 || list_prefix(raw).map_or((0, String::new(), 0), |(len, prefix)| (len, prefix, 0)),
-                |(len, mark)| {
-                    let glyph = if mark.checked { "☑ " } else { "☐ " };
-                    (len, glyph.to_string(), 0)
+                |(len, _mark)| {
+                    // " - " bullet, then blank space reserving room for the
+                    // square the element paints (see `checkbox_bounds`), then a
+                    // trailing space before the text.
+                    (len, format!(" - {}", " ".repeat(5)), 0)
                 },
             ),
             _ => (0, String::new(), 0),
@@ -683,7 +685,7 @@ fn list_prefix(raw: &str) -> Option<(usize, String)> {
 /// Returns the byte length of the whole `bullet + box + space` prefix to hide,
 /// and the [`TaskMark`] carrying the checked state and the absolute source
 /// range of the three-character `[ ]`/`[x]` box.
-fn task_prefix(raw: &str, base: usize) -> Option<(usize, TaskMark)> {
+pub(crate) fn task_prefix(raw: &str, base: usize) -> Option<(usize, TaskMark)> {
     let trimmed = raw.trim_start();
     let indent = raw.len() - trimmed.len();
     let after_bullet = trimmed
@@ -1200,14 +1202,16 @@ mod tests {
     }
 
     #[test]
-    fn task_line_renders_a_checkbox_glyph_and_mark() {
+    fn task_line_reserves_a_checkbox_prefix_and_mark() {
         let model = DocumentModel::new("- [ ] todo\n- [x] done".into());
         let lines: Vec<_> = model.blocks.iter().flat_map(|b| &b.rendered).collect();
         let todo = lines.iter().find(|l| l.text.contains("todo")).unwrap();
         assert_eq!(todo.task.as_ref().map(|t| t.checked), Some(false));
-        assert!(todo.text.starts_with('☐'));
+        // The checkbox itself is painted by the element; the rendered text has
+        // a " - " bullet and reserves blank space where the square sits.
+        assert!(todo.text.starts_with(" - "));
         let done = lines.iter().find(|l| l.text.contains("done")).unwrap();
         assert_eq!(done.task.as_ref().map(|t| t.checked), Some(true));
-        assert!(done.text.starts_with('☑'));
+        assert!(done.text.starts_with(" - "));
     }
 }

@@ -246,6 +246,14 @@ pub fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
         }
     }
 
+    // The task-list extension is off, so `[ ]`/`[x]` parses as plain text. Grey
+    // it like the leading list marker so the whole checkbox syntax reads dim.
+    if let Some((_, mark)) = crate::model::task_prefix(text, 0) {
+        for style in &mut byte_styles[mark.box_range] {
+            style.role = RawRole::Mark;
+        }
+    }
+
     let mut spans = Vec::<(usize, RawStyle)>::new();
     for style in byte_styles {
         if let Some((len, previous)) = spans.last_mut()

@@ -106,7 +106,7 @@ actions!(
 );
 
 use crate::element::{
-    BlockWidget, DocumentElement, HitLine, RenderClass, source_offset_for_hit,
+    BlockWidget, DocumentElement, HitLine, RenderClass, checkbox_bounds, source_offset_for_hit,
     vertical_distance,
 };
 
