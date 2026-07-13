@@ -3,10 +3,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{
-    FontStyle, FontWeight, Hsla, ImageFormat, Pixels, RenderImage, Resource, SharedString, TextRun,
-    UnderlineStyle, Window, WrappedLine, font, hsla, px,
+    FontStyle, FontWeight, Hsla, ImageFormat, Pixels, RenderImage, Resource, SharedString,
+    StrikethroughStyle, TextRun, UnderlineStyle, Window, WrappedLine, font, hsla, px,
 };
-use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Tag, TagEnd};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::layout::{DEFAULT_IMAGE_ROWS, GRID, MONO_FONT, PROSE_FONT, WRAP_WIDTH};
@@ -22,6 +22,10 @@ pub struct ShapedLine {
     pub inline_code: Vec<Range<usize>>,
     pub image: Option<ShapedImage>,
     pub task: Option<TaskMark>,
+    /// Set when the line is a thematic break, painted as a horizontal rule.
+    pub rule: bool,
+    /// Set when the line belongs to a blockquote, painted with a left bar.
+    pub quote: bool,
     /// Ascent used for vertical placement. Falls back to the font's metrics
     /// when the line has no glyphs, since an empty shaped line reports zero.
     pub ascent: Pixels,
@@ -180,6 +184,8 @@ pub fn shape_raw(
         },
         image: None,
         task: None,
+        rule: false,
+        quote: false,
         ascent,
         descent,
     }
@@ -213,12 +219,14 @@ pub fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
         text.len()
     ];
     let mut current = InlineStyle::default();
-    for (event, range) in Parser::new(text).into_offset_iter() {
+    for (event, range) in crate::model::md_parser(text).into_offset_iter() {
         match event {
             Event::Start(Tag::Emphasis) => current.italic = true,
             Event::End(TagEnd::Emphasis) => current.italic = false,
             Event::Start(Tag::Strong) => current.strong = true,
             Event::End(TagEnd::Strong) => current.strong = false,
+            Event::Start(Tag::Strikethrough) => current.strikethrough = true,
+            Event::End(TagEnd::Strikethrough) => current.strikethrough = false,
             Event::Start(Tag::Link { .. }) => current.link = true,
             Event::End(TagEnd::Link) => current.link = false,
             Event::Text(_) => {
@@ -306,15 +314,24 @@ pub fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
                     color: Some(alpha(color, 0.4)),
                     wavy: false,
                 }),
-                strikethrough: None,
+                strikethrough: strikethrough_style(style.inline.strikethrough, color),
             }
         })
         .collect()
 }
 
+/// Strikethrough decoration for a run whose text colour is `color`, or `None`
+/// when the run is not struck through.
+fn strikethrough_style(on: bool, color: Hsla) -> Option<StrikethroughStyle> {
+    on.then_some(StrikethroughStyle {
+        thickness: px(1.5),
+        color: Some(color),
+    })
+}
+
 #[must_use] 
 pub fn inline_code_ranges(text: &str) -> Vec<Range<usize>> {
-    Parser::new(text)
+    crate::model::md_parser(text)
         .into_offset_iter()
         .filter_map(|(event, range)| match event {
             Event::Code(_) => Some(
@@ -557,7 +574,7 @@ pub fn shape_render(
                         color: Some(alpha(color, 0.4)),
                         wavy: false,
                     }),
-                    strikethrough: None,
+                    strikethrough: strikethrough_style(s.style.strikethrough, color),
                 }
             })
             .collect::<Vec<_>>()
@@ -596,6 +613,8 @@ pub fn shape_render(
             rows: DEFAULT_IMAGE_ROWS,
         }),
         task: line.task.clone(),
+        rule: line.rule,
+        quote: line.quote,
         ascent,
         descent,
     }

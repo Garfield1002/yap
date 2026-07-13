@@ -1,6 +1,13 @@
 use std::{ops::Range, time::Duration};
 
-use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+/// A parser with the GitHub-flavoured extensions this editor renders enabled
+/// (currently strikethrough). Shared so every parse site agrees on syntax.
+#[must_use]
+pub(crate) fn md_parser(text: &str) -> Parser<'_> {
+    Parser::new_ext(text, Options::ENABLE_STRIKETHROUGH)
+}
 
 pub type BlockId = u64;
 
@@ -10,6 +17,7 @@ pub struct InlineStyle {
     pub strong: bool,
     pub link: bool,
     pub code: bool,
+    pub strikethrough: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -30,6 +38,12 @@ pub struct RenderLine {
     /// Set when the line is a task-list item, carrying its checkbox state and
     /// the source range of the `[ ]`/`[x]` box so a click can toggle it.
     pub task: Option<TaskMark>,
+    /// Set when the line is a thematic break (`---`), painted as a horizontal
+    /// rule instead of glyphs.
+    pub rule: bool,
+    /// Set when the line belongs to a blockquote, so the element paints a
+    /// vertical bar and indents the text.
+    pub quote: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -63,6 +77,8 @@ pub enum BlockKind {
     Heading(u8),
     List,
     Code,
+    Quote,
+    Rule,
 }
 
 #[derive(Clone, Debug)]
@@ -447,6 +463,8 @@ fn empty_block(id: BlockId, offset: usize) -> Block {
             code_block: false,
             image: None,
             task: None,
+            rule: false,
+            quote: false,
         }],
     }
 }
@@ -562,13 +580,42 @@ fn classify(raw: &str) -> BlockKind {
         BlockKind::Blank
     } else if first.starts_with("```") {
         BlockKind::Code
+    } else if is_thematic_break(first) {
+        BlockKind::Rule
     } else if let Some(level) = heading_level(first) {
         BlockKind::Heading(level)
+    } else if first.starts_with('>') {
+        BlockKind::Quote
     } else if list_prefix(first).is_some() {
         BlockKind::List
     } else {
         BlockKind::Paragraph
     }
+}
+
+/// A thematic break: a line of three or more `-`, `*`, or `_`, mixed only with
+/// spaces (e.g. `---`, `***`, `_ _ _`).
+fn is_thematic_break(line: &str) -> bool {
+    let trimmed = line.trim();
+    let Some(marker) = trimmed.chars().find(|c| !c.is_whitespace()) else {
+        return false;
+    };
+    if !matches!(marker, '-' | '*' | '_') {
+        return false;
+    }
+    trimmed.chars().filter(|c| *c == marker).count() >= 3
+        && trimmed.chars().all(|c| c == marker || c == ' ')
+}
+
+/// Length of a blockquote line's `>`/`> ` marker, to hide from the rendered
+/// view.
+fn quote_prefix(raw: &str) -> usize {
+    let trimmed = raw.trim_start();
+    let indent = raw.len() - trimmed.len();
+    let Some(rest) = trimmed.strip_prefix('>') else {
+        return 0;
+    };
+    indent + 1 + usize::from(rest.starts_with(' '))
 }
 
 fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
@@ -596,6 +643,25 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 code_block: true,
                 image: None,
                 task: None,
+                rule: false,
+                quote: false,
+            });
+            continue;
+        }
+        if block.kind == BlockKind::Rule {
+            result.push(RenderLine {
+                text: String::new(),
+                spans: vec![RenderSpan {
+                    len: 0,
+                    style: InlineStyle::default(),
+                }],
+                source_map: vec![range.start],
+                level: 0,
+                code_block: false,
+                image: None,
+                task: None,
+                rule: true,
+                quote: false,
             });
             continue;
         }
@@ -613,8 +679,10 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                     (len, format!(" - {}", " ".repeat(5)), 0)
                 },
             ),
+            BlockKind::Quote => (quote_prefix(raw), String::new(), 0),
             _ => (0, String::new(), 0),
         };
+        let quote = block.kind == BlockKind::Quote;
         let task = task.map(|(_, mark)| mark);
         if block.kind == BlockKind::Code {
             result.push(code_line(raw, range.start));
@@ -632,6 +700,8 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 code_block: false,
                 image: Some(image),
                 task: None,
+                rule: false,
+                quote: false,
             });
             continue;
         }
@@ -663,6 +733,8 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             code_block: false,
             image: None,
             task,
+            rule: false,
+            quote,
         });
     }
     if result.is_empty() {
@@ -677,6 +749,8 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             code_block: block.kind == BlockKind::Code,
             image: None,
             task: None,
+            rule: false,
+            quote: false,
         });
     }
     result
@@ -741,6 +815,8 @@ fn code_line(raw: &str, base: usize) -> RenderLine {
         code_block: true,
         image: None,
         task: None,
+        rule: false,
+        quote: false,
     }
 }
 
@@ -750,7 +826,7 @@ fn standalone_image(raw: &str) -> Option<MarkdownImage> {
     let mut src = None;
     let mut alt = String::new();
     let mut saw_outside = false;
-    for (event, _) in Parser::new(trimmed).into_offset_iter() {
+    for (event, _) in md_parser(trimmed).into_offset_iter() {
         match event {
             Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph) if depth == 0 => {}
             Event::Start(Tag::Image { dest_url, .. }) if depth == 0 && src.is_none() => {
@@ -777,12 +853,14 @@ fn render_inline(source: &str, base: usize) -> (String, Vec<RenderSpan>, Vec<usi
     let mut spans = Vec::new();
     let mut map = vec![base];
     let mut style = InlineStyle::default();
-    for (event, range) in Parser::new(source).into_offset_iter() {
+    for (event, range) in md_parser(source).into_offset_iter() {
         match event {
             Event::Start(Tag::Emphasis) => style.italic = true,
             Event::End(TagEnd::Emphasis) => style.italic = false,
             Event::Start(Tag::Strong) => style.strong = true,
             Event::End(TagEnd::Strong) => style.strong = false,
+            Event::Start(Tag::Strikethrough) => style.strikethrough = true,
+            Event::End(TagEnd::Strikethrough) => style.strikethrough = false,
             Event::Start(Tag::Link { .. }) => style.link = true,
             Event::End(TagEnd::Link) => style.link = false,
             Event::Text(value) => append_mapped(
@@ -958,6 +1036,40 @@ mod tests {
         let model = DocumentModel::new("before ![alt](pic.png) after".into());
         assert!(model.blocks[0].rendered[0].image.is_none());
         assert_eq!(model.blocks[0].rendered[0].text, "before alt after");
+    }
+
+    #[test]
+    fn strikethrough_is_styled_and_markers_hidden() {
+        let model = DocumentModel::new("keep ~~gone~~ done".into());
+        let line = &model.blocks[0].rendered[0];
+        assert_eq!(line.text, "keep gone done");
+        assert!(line.spans.iter().any(|span| span.style.strikethrough));
+    }
+
+    #[test]
+    fn thematic_break_becomes_a_rule_block() {
+        let model = DocumentModel::new("above\n\n---\n\nbelow".into());
+        let rule = model
+            .blocks
+            .iter()
+            .find(|b| b.kind == BlockKind::Rule)
+            .unwrap();
+        assert!(rule.rendered[0].rule);
+        assert!(rule.rendered[0].text.is_empty());
+        // A list item is not mistaken for a rule.
+        assert_eq!(classify("- item"), BlockKind::List);
+        assert_eq!(classify("***"), BlockKind::Rule);
+    }
+
+    #[test]
+    fn blockquote_hides_marker_and_flags_line() {
+        let model = DocumentModel::new("> quoted *text*".into());
+        assert_eq!(model.blocks[0].kind, BlockKind::Quote);
+        let line = &model.blocks[0].rendered[0];
+        assert_eq!(line.text, "quoted text");
+        assert!(line.quote);
+        // The rendered text maps back past the `> ` marker.
+        assert_eq!(line.source_for_rendered(0), 2);
     }
 
     #[test]

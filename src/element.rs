@@ -265,6 +265,10 @@ pub struct Prepared {
     /// Task checkboxes to paint, each with a hitbox (for the pointer cursor) and
     /// its checked state.
     pub checkboxes: Vec<(Hitbox, bool)>,
+    /// Horizontal rules (thematic breaks) to paint.
+    pub rules: Vec<Bounds<Pixels>>,
+    /// Vertical blockquote bars to paint.
+    pub quote_bars: Vec<Bounds<Pixels>>,
 }
 
 pub struct PreparedImage {
@@ -324,6 +328,8 @@ impl Element for DocumentElement {
         let mut code_slabs = Vec::new();
         let mut inline_code_boxes = Vec::new();
         let mut images = Vec::new();
+        let mut rules = Vec::new();
+        let mut quote_bars = Vec::new();
         let mut cursor = None;
         let mut selections = Vec::new();
         let mut anchor_delta = None;
@@ -368,10 +374,27 @@ impl Element for DocumentElement {
                     let paint_top = baseline - pad - line.ascent;
                     let cell_top = block_top + px(row as f32 * GRID);
                     let code_inset = if line.code { 12. } else { 0. };
+                    // Blockquotes only inset from the left, leaving room for the bar.
+                    let quote_inset = if line.quote && !active { 18. } else { 0. };
                     let lb = Bounds::new(
-                        point(bounds.left() + px(INSET + code_inset), cell_top),
-                        size(px(WRAP_WIDTH - code_inset * 2.), px(n as f32 * GRID)),
+                        point(bounds.left() + px(INSET + code_inset + quote_inset), cell_top),
+                        size(
+                            px(WRAP_WIDTH - code_inset * 2. - quote_inset),
+                            px(n as f32 * GRID),
+                        ),
                     );
+                    if line.rule && !active {
+                        rules.push(Bounds::new(
+                            point(bounds.left() + px(INSET), cell_top + px(GRID / 2. - 1.)),
+                            size(px(WRAP_WIDTH), px(2.)),
+                        ));
+                    }
+                    if line.quote && !active {
+                        quote_bars.push(Bounds::new(
+                            point(bounds.left() + px(INSET), cell_top),
+                            size(px(3.), px(n as f32 * GRID)),
+                        ));
+                    }
                     if let Some(image) = &line.image {
                         let image_bounds = image.data.as_ref().map(|data| {
                             let dimensions = data.size(0);
@@ -506,6 +529,8 @@ impl Element for DocumentElement {
             visible,
             anchor_delta,
             checkboxes,
+            rules,
+            quote_bars,
         }
     }
     fn paint(
@@ -588,6 +613,12 @@ impl Element for DocumentElement {
                 point(slab.right() - px(1.), slab.bottom() - px(1.)),
             );
             window.paint_quad(fill(inner, colors.code_bg).corner_radii(px(5.)));
+        }
+        for rule in &p.rules {
+            window.paint_quad(fill(*rule, colors.border).corner_radii(px(1.)));
+        }
+        for bar in &p.quote_bars {
+            window.paint_quad(fill(*bar, colors.fg_faint).corner_radii(px(1.5)));
         }
         for l in &p.lines {
             let _ = l.layout.paint(
