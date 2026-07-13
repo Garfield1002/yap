@@ -26,6 +26,9 @@ pub struct ShapedLine {
     pub rule: bool,
     /// Set when the line belongs to a blockquote, painted with a left bar.
     pub quote: bool,
+    /// Nesting level (list indent level, or blockquote marker count). Drives the
+    /// text indent and the number of blockquote bars painted.
+    pub depth: u8,
     /// Ascent used for vertical placement. Falls back to the font's metrics
     /// when the line has no glyphs, since an empty shaped line reports zero.
     pub ascent: Pixels,
@@ -186,6 +189,7 @@ pub fn shape_raw(
         task: None,
         rule: false,
         quote: false,
+        depth: 0,
         ascent,
         descent,
     }
@@ -615,6 +619,7 @@ pub fn shape_render(
         task: line.task.clone(),
         rule: line.rule,
         quote: line.quote,
+        depth: line.depth,
         ascent,
         descent,
     }

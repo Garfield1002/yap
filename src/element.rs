@@ -24,6 +24,13 @@ use gpui::UnderlineStyle;
 /// to zero width.
 const NEWLINE_STUB: f32 = 8.;
 
+/// Horizontal indent, in pixels, added per blockquote nesting level (also the
+/// spacing between stacked quote bars).
+const QUOTE_STEP: f32 = 14.;
+
+/// Horizontal indent, in pixels, added per nested-list level.
+const LIST_STEP: f32 = 22.;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RenderClass {
     Blank,
@@ -374,26 +381,35 @@ impl Element for DocumentElement {
                     let paint_top = baseline - pad - line.ascent;
                     let cell_top = block_top + px(row as f32 * GRID);
                     let code_inset = if line.code { 12. } else { 0. };
-                    // Blockquotes only inset from the left, leaving room for the bar.
-                    let quote_inset = if line.quote && !active { 18. } else { 0. };
+                    let depth = f32::from(line.depth);
+                    // Blockquotes inset from the left (one step per nesting level,
+                    // leaving room for a bar); nested list items indent likewise.
+                    let quote_inset = if line.quote { depth.mul_add(QUOTE_STEP, 4.) } else { 0. };
+                    let list_inset = if line.quote || line.code { 0. } else { depth * LIST_STEP };
+                    let left_inset = code_inset + quote_inset + list_inset;
                     let lb = Bounds::new(
-                        point(bounds.left() + px(INSET + code_inset + quote_inset), cell_top),
+                        point(bounds.left() + px(INSET + left_inset), cell_top),
                         size(
-                            px(WRAP_WIDTH - code_inset * 2. - quote_inset),
+                            px(WRAP_WIDTH - left_inset - code_inset),
                             px(n as f32 * GRID),
                         ),
                     );
-                    if line.rule && !active {
+                    if line.rule {
                         rules.push(Bounds::new(
                             point(bounds.left() + px(INSET), cell_top + px(GRID / 2. - 1.)),
                             size(px(WRAP_WIDTH), px(2.)),
                         ));
                     }
-                    if line.quote && !active {
-                        quote_bars.push(Bounds::new(
-                            point(bounds.left() + px(INSET), cell_top),
-                            size(px(3.), px(n as f32 * GRID)),
-                        ));
+                    if line.quote {
+                        for level in 0..line.depth {
+                            quote_bars.push(Bounds::new(
+                                point(
+                                    bounds.left() + px(f32::from(level).mul_add(QUOTE_STEP, INSET)),
+                                    cell_top,
+                                ),
+                                size(px(3.), px(n as f32 * GRID)),
+                            ));
+                        }
                     }
                     if let Some(image) = &line.image {
                         let image_bounds = image.data.as_ref().map(|data| {

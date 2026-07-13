@@ -1,7 +1,31 @@
 # Native Markdown
-This fixture exercises the supported native editor surface without tables, HTML, math, task lists, or plugins.
+This fixture exercises the supported native editor surface — including blockquotes, thematic breaks, strikethrough, and nested lists — without tables, HTML, math, or plugins.
 
-Inline `monospace` text uses the code background.
+Inline `monospace` text uses the code background. I cant **spelll** 
+
+## Rich blocks
+
+Inline styles combine: *emphasis*, **strong**, `code`, and ~~struck-out~~ text can share a sentence, and ~~**bold that is also crossed out**~~ still resolves.
+
+A thematic break separates ideas with a single rule:
+
+---
+
+Blockquotes draw a vertical bar, and they nest:
+
+> A single quote reads as one bar.
+> > A second marker adds a second bar for the reply.
+> > > Three levels deep still lines up on the grid.
+
+Nested lists indent one step per level, for bullets and numbers alike:
+
+- Top-level bullet
+  - Second level
+    - Third level
+- Back to the top
+  1. Ordered child
+  2. Another ordered child
+     - Bullet under a number
 
 ## Editing in place
 The document remains rendered until the cursor enters a block. The active block reveals its **raw Markdown** while surrounding blocks remain calm.

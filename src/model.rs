@@ -44,6 +44,10 @@ pub struct RenderLine {
     /// Set when the line belongs to a blockquote, so the element paints a
     /// vertical bar and indents the text.
     pub quote: bool,
+    /// Nesting level. For list items it is the indent level (0 = top level);
+    /// for blockquote lines it is the number of `>` markers. The element uses
+    /// it to indent the text (and, for quotes, to paint one bar per level).
+    pub depth: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -465,6 +469,7 @@ fn empty_block(id: BlockId, offset: usize) -> Block {
             task: None,
             rule: false,
             quote: false,
+            depth: 0,
         }],
     }
 }
@@ -607,15 +612,34 @@ fn is_thematic_break(line: &str) -> bool {
         && trimmed.chars().all(|c| c == marker || c == ' ')
 }
 
-/// Length of a blockquote line's `>`/`> ` marker, to hide from the rendered
-/// view.
-fn quote_prefix(raw: &str) -> usize {
-    let trimmed = raw.trim_start();
-    let indent = raw.len() - trimmed.len();
-    let Some(rest) = trimmed.strip_prefix('>') else {
-        return 0;
-    };
-    indent + 1 + usize::from(rest.starts_with(' '))
+/// Parses a blockquote line's leading marker run (`>`, `> > `, `>>`, …), each
+/// `>` optionally followed by one space. Returns the nesting depth (marker
+/// count) and the byte length of the whole run to hide from the rendered view.
+fn quote_marker(raw: &str) -> (u8, usize) {
+    let indent = raw.len() - raw.trim_start().len();
+    let mut rest = &raw[indent..];
+    let mut consumed = indent;
+    let mut depth = 0u8;
+    while let Some(after) = rest.strip_prefix('>') {
+        depth = depth.saturating_add(1);
+        consumed += 1;
+        rest = after.strip_prefix(' ').map_or(after, |r| {
+            consumed += 1;
+            r
+        });
+    }
+    (depth, consumed)
+}
+
+/// Indent level of a list line, treating a tab as four columns and two columns
+/// as one level (capped so runaway indentation stays bounded).
+fn list_indent_depth(raw: &str) -> u8 {
+    let indent = raw.len() - raw.trim_start().len();
+    let columns: usize = raw[..indent]
+        .chars()
+        .map(|c| if c == '\t' { 4 } else { 1 })
+        .sum();
+    (columns / 2).min(8) as u8
 }
 
 fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
@@ -645,6 +669,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 task: None,
                 rule: false,
                 quote: false,
+                depth: 0,
             });
             continue;
         }
@@ -662,6 +687,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 task: None,
                 rule: true,
                 quote: false,
+                depth: 0,
             });
             continue;
         }
@@ -679,10 +705,15 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                     (len, format!(" - {}", " ".repeat(5)), 0)
                 },
             ),
-            BlockKind::Quote => (quote_prefix(raw), String::new(), 0),
+            BlockKind::Quote => (quote_marker(raw).1, String::new(), 0),
             _ => (0, String::new(), 0),
         };
         let quote = block.kind == BlockKind::Quote;
+        let depth = match block.kind {
+            BlockKind::List => list_indent_depth(raw),
+            BlockKind::Quote => quote_marker(raw).0,
+            _ => 0,
+        };
         let task = task.map(|(_, mark)| mark);
         if block.kind == BlockKind::Code {
             result.push(code_line(raw, range.start));
@@ -702,6 +733,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
                 task: None,
                 rule: false,
                 quote: false,
+                depth: 0,
             });
             continue;
         }
@@ -735,6 +767,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             task,
             rule: false,
             quote,
+            depth,
         });
     }
     if result.is_empty() {
@@ -751,6 +784,7 @@ fn render_block(content: &str, block: &Block) -> Vec<RenderLine> {
             task: None,
             rule: false,
             quote: false,
+            depth: 0,
         });
     }
     result
@@ -765,7 +799,8 @@ fn list_prefix(raw: &str) -> Option<(usize, String)> {
     let digits = trimmed.bytes().take_while(u8::is_ascii_digit).count();
     if digits > 0 && trimmed[digits..].starts_with(". ") {
         let len = indent + digits + 2;
-        return Some((len, raw[..len].to_string()));
+        // Show just the "N. " marker; nesting indent is applied by the element.
+        return Some((len, trimmed[..digits + 2].to_string()));
     }
     None
 }
@@ -817,6 +852,7 @@ fn code_line(raw: &str, base: usize) -> RenderLine {
         task: None,
         rule: false,
         quote: false,
+        depth: 0,
     }
 }
 
@@ -1068,8 +1104,31 @@ mod tests {
         let line = &model.blocks[0].rendered[0];
         assert_eq!(line.text, "quoted text");
         assert!(line.quote);
+        assert_eq!(line.depth, 1);
         // The rendered text maps back past the `> ` marker.
         assert_eq!(line.source_for_rendered(0), 2);
+    }
+
+    #[test]
+    fn nested_blockquote_counts_markers_and_hides_them() {
+        let model = DocumentModel::new("> outer\n> > inner\n>> tight".into());
+        let lines = &model.blocks[0].rendered;
+        assert_eq!(lines[0].text, "outer");
+        assert_eq!(lines[0].depth, 1);
+        assert_eq!(lines[1].text, "inner");
+        assert_eq!(lines[1].depth, 2);
+        assert_eq!(lines[2].text, "tight");
+        assert_eq!(lines[2].depth, 2);
+    }
+
+    #[test]
+    fn nested_list_items_carry_indent_depth() {
+        let model = DocumentModel::new("- top\n  - two spaces\n    - four spaces".into());
+        let lines = &model.blocks[0].rendered;
+        assert_eq!(lines[0].depth, 0);
+        assert_eq!(lines[1].depth, 1);
+        assert_eq!(lines[2].depth, 2);
+        assert!(lines.iter().all(|line| line.text.starts_with("• ")));
     }
 
     #[test]
