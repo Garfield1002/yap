@@ -8,6 +8,10 @@ impl Editor {
         let caret = self.cursor();
         let palette = palette(self.theming.dark);
         let document_path = self.path.clone();
+        let default_metrics = *self
+            .layout
+            .default_text_metrics
+            .get_or_insert_with(|| default_text_metrics(window));
         for (i, block) in self.document.blocks.iter().enumerate() {
             let editing_lines = self.document.editing_lines(i, caret);
             let cache = self.layout.shapes.entry(block.id).or_default();
@@ -15,7 +19,7 @@ impl Editor {
                 let lines = block
                     .rendered
                     .iter()
-                    .map(|l| shape_render(l, document_path.as_deref(), palette, window))
+                    .map(|l| shape_render(l, document_path.as_deref(), palette, default_metrics, window))
                     .collect::<Vec<_>>();
                 cache.rendered_rows = rows(&lines);
                 cache.rendered = Some(lines);
@@ -63,6 +67,7 @@ impl Editor {
                             self.document.raw_line(r),
                             code_line,
                             palette,
+                            default_metrics,
                             window,
                         )
                     })

@@ -16,7 +16,7 @@ use crate::{
     layout::{DOCUMENT_WIDTH, GRID, PROSE_FONT},
     persistence::{self, AppConfig},
     shaping::{
-        ShapeCache, grapheme_offset, image_allocation_rows, image_extension,
+        ShapeCache, default_text_metrics, grapheme_offset, image_allocation_rows, image_extension,
         next_word_boundary, previous_word_boundary, rows, shape_raw, shape_render,
         source_line_is_code, utf16_to_utf8, utf8_to_utf16,
     },
@@ -215,6 +215,9 @@ pub(crate) struct LayoutState {
     pub(crate) hit_lines: Vec<HitLine>,
     pub(crate) doc_bounds: Option<Bounds<Pixels>>,
     pub(crate) revealed: HashSet<BlockId>,
+    /// Ascent/descent of a generic prose line, measured once on first shape and
+    /// reused for empty lines (which carry no glyphs to measure themselves).
+    pub(crate) default_text_metrics: Option<(Pixels, Pixels)>,
 }
 
 /// Resolved appearance: whether we're painting dark, the user's preference it

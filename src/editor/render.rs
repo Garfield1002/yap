@@ -257,14 +257,6 @@ impl Render for Editor {
                             .justify_end()
                             .child(
                                 div()
-                                    .flex_none()
-                                    .px(px(10.))
-                                    .flex()
-                                    .items_center()
-                                    .child(img(logo_image(dark)).w(px(18.)).h(px(18.))),
-                            )
-                            .child(
-                                div()
                                     .id("window-minimize")
                                     .w(px(44.))
                                     .h_full()

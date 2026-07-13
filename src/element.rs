@@ -275,8 +275,8 @@ impl Element for DocumentElement {
                     let n = line_rows(line);
                     let baseline =
                         bounds.top() + px(((widget.top_row() + row) as f32).mul_add(GRID, FIRST_BASELINE));
-                    let pad = (px(GRID) - line.layout.ascent() - line.layout.descent()) / 2.;
-                    let paint_top = baseline - pad - line.layout.ascent();
+                    let pad = (px(GRID) - line.ascent - line.descent) / 2.;
+                    let paint_top = baseline - pad - line.ascent;
                     let cell_top = block_top + px(row as f32 * GRID);
                     let code_inset = if line.code { 12. } else { 0. };
                     let lb = Bounds::new(

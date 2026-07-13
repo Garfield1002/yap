@@ -3,8 +3,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{
-    FontStyle, FontWeight, Hsla, ImageFormat, RenderImage, Resource, SharedString, TextRun,
-    UnderlineStyle, Window, WrappedLine, font, px,
+    FontStyle, FontWeight, Hsla, ImageFormat, Pixels, RenderImage, Resource, SharedString, TextRun,
+    UnderlineStyle, Window, WrappedLine, font, hsla, px,
 };
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use unicode_segmentation::UnicodeSegmentation;
@@ -21,6 +21,55 @@ pub struct ShapedLine {
     pub code: bool,
     pub inline_code: Vec<Range<usize>>,
     pub image: Option<ShapedImage>,
+    /// Ascent used for vertical placement. Falls back to the font's metrics
+    /// when the line has no glyphs, since an empty shaped line reports zero.
+    pub ascent: Pixels,
+    /// Descent used for vertical placement. See [`ShapedLine::ascent`].
+    pub descent: Pixels,
+}
+
+/// Ascent and descent of a generic prose line, measured once when the editor
+/// first shapes so empty lines can reuse it.
+///
+/// An empty line has no glyphs, so its `WrappedLine` reports zero ascent and
+/// descent, which would drop the caret below where a line of text sits. The
+/// font's own metrics don't match either — they're the typographic maxima, not
+/// the tighter box a real shaped line reports — so we measure an actual line of
+/// prose and reuse those values.
+#[must_use]
+pub fn default_text_metrics(w: &mut Window) -> (Pixels, Pixels) {
+    let text = SharedString::from("Ag");
+    let layout = w
+        .text_system()
+        .shape_text(
+            text.clone(),
+            px(16.),
+            &[TextRun {
+                len: text.len(),
+                font: font(PROSE_FONT),
+                color: hsla(0., 0., 0., 1.),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+            None,
+        )
+        .unwrap()
+        .remove(0);
+    (layout.ascent(), layout.descent())
+}
+
+/// Ascent and descent for vertical placement of a shaped line.
+///
+/// A non-empty line reports the metrics of its own glyphs; an empty line has
+/// none, so it reuses the generic prose metrics measured at open time.
+fn line_metrics(text: &str, layout: &WrappedLine, default: (Pixels, Pixels)) -> (Pixels, Pixels) {
+    if text.is_empty() {
+        default
+    } else {
+        (layout.ascent(), layout.descent())
+    }
 }
 
 #[derive(Clone)]
@@ -94,6 +143,7 @@ pub fn shape_raw(
     text: &str,
     code_block: bool,
     palette: Palette,
+    default_metrics: (Pixels, Pixels),
     w: &mut Window,
 ) -> ShapedLine {
     let runs = if code_block {
@@ -116,6 +166,7 @@ pub fn shape_raw(
         )
         .unwrap()
         .remove(0);
+    let (ascent, descent) = line_metrics(text, &layout, default_metrics);
     ShapedLine {
         source: range,
         layout,
@@ -127,6 +178,8 @@ pub fn shape_raw(
             inline_code_ranges(text)
         },
         image: None,
+        ascent,
+        descent,
     }
 }
 
@@ -454,6 +507,7 @@ pub fn shape_render(
     line: &RenderLine,
     document_path: Option<&Path>,
     palette: Palette,
+    default_metrics: (Pixels, Pixels),
     w: &mut Window,
 ) -> ShapedLine {
     let size = match line.level {
@@ -513,6 +567,7 @@ pub fn shape_render(
         )
         .unwrap()
         .remove(0);
+    let (ascent, descent) = line_metrics(&line.text, &layout, default_metrics);
     ShapedLine {
         source: 0..0,
         layout,
@@ -530,6 +585,8 @@ pub fn shape_render(
             failed: false,
             rows: DEFAULT_IMAGE_ROWS,
         }),
+        ascent,
+        descent,
     }
 }
 
