@@ -172,24 +172,21 @@ impl Editor {
             )
             .when(expanded, |slot| {
                 slot.child(
-                    deferred(
-                        div()
-                            .absolute()
-                            .top(px(-4.))
-                            .left(px(214.))
-                            .w(px(214.))
-                            .py(px(4.))
-                            .bg(colors.bg)
-                            .border_1()
-                            .border_color(colors.border)
-                            .rounded(px(4.))
-                            .shadow_lg()
-                            .occlude()
-                            .flex()
-                            .flex_col()
-                            .children(items),
-                    )
-                    .with_priority(11),
+                    div()
+                        .absolute()
+                        .top(px(-4.))
+                        .left(px(214.))
+                        .w(px(214.))
+                        .py(px(4.))
+                        .bg(colors.bg)
+                        .border_1()
+                        .border_color(colors.border)
+                        .rounded(px(4.))
+                        .shadow_lg()
+                        .occlude()
+                        .flex()
+                        .flex_col()
+                        .children(items),
                 )
             })
     }
