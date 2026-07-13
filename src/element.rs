@@ -16,6 +16,11 @@ use gpui::{
     fill, font, point, px, size,
 };
 
+/// Width of the selection stub drawn for a selected trailing newline, so an
+/// empty selected line (or a line break) shows something instead of collapsing
+/// to zero width.
+const NEWLINE_STUB: f32 = 8.;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RenderClass {
     Blank,
@@ -361,27 +366,36 @@ impl Element for DocumentElement {
                                     colors.accent,
                                 ));
                             }
-                        let overlap = e.sel.range.start.max(line.source.start)
-                            ..e.sel.range.end.min(line.source.end);
-                        if overlap.start < overlap.end
+                        let sel = &e.sel.range;
+                        if sel.start <= line.source.end
+                            && sel.end >= line.source.start
                             && let (Some(a), Some(z)) = (
                                 line.layout.position_for_index(
-                                    overlap.start - line.source.start,
+                                    sel.start.max(line.source.start) - line.source.start,
                                     px(GRID),
                                 ),
-                                line.layout
-                                    .position_for_index(overlap.end - line.source.start, px(GRID)),
+                                line.layout.position_for_index(
+                                    sel.end.min(line.source.end) - line.source.start,
+                                    px(GRID),
+                                ),
                             ) {
-                                selections.push(fill(
-                                    Bounds::from_corners(
-                                        point(paint_origin.x + a.x, paint_origin.y + a.y),
-                                        point(
-                                            paint_origin.x + z.x,
-                                            paint_origin.y + z.y + px(GRID),
+                                // The newline ending this line is selected when the
+                                // selection continues past its last character. Draw a
+                                // small stub for it so selecting an empty line (or the
+                                // line break at the end of any line) stays visible.
+                                let newline_selected = sel.end > line.source.end;
+                                let right = paint_origin.x
+                                    + z.x
+                                    + if newline_selected { px(NEWLINE_STUB) } else { px(0.) };
+                                if right > paint_origin.x + a.x {
+                                    selections.push(fill(
+                                        Bounds::from_corners(
+                                            point(paint_origin.x + a.x, paint_origin.y + a.y),
+                                            point(right, paint_origin.y + z.y + px(GRID)),
                                         ),
-                                    ),
-                                    colors.selection,
-                                ));
+                                        colors.selection,
+                                    ));
+                                }
                             }
                     }
                     lines.push(hit);
