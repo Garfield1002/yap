@@ -11,10 +11,10 @@ use crate::{
     model::{
         BlockId, BlockKind, DocumentModel, EditMode, EditTransaction,
     },
-    layout::{DOCUMENT_WIDTH, FIRST_BASELINE, GRID, INSET, PROSE_FONT, WRAP_WIDTH},
+    layout::{DOCUMENT_WIDTH, GRID, PROSE_FONT},
     persistence::{self, AppConfig},
     shaping::{
-        ShapeCache, grapheme_offset, image_allocation_rows, image_extension, line_rows,
+        ShapeCache, grapheme_offset, image_allocation_rows, image_extension,
         next_word_boundary, previous_word_boundary, rows, shape_raw, shape_render,
         source_line_is_code, utf16_to_utf8, utf8_to_utf16,
     },
@@ -22,13 +22,12 @@ use crate::{
 };
 use gpui::{
     App, Bounds, BoxShadow, ClipboardEntry, ClipboardItem, Context, CursorStyle,
-    Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, FocusHandle, Focusable,
-    GlobalElementId, Hsla, Image, ImageFormat, ImgResourceLoader,
-    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad,
-    PathPromptOptions, Pixels, Point, PromptLevel, RenderImage, ScrollHandle,
-    SharedString, Style, TextAlign, TextRun, UTF16Selection, Window, WrappedLine,
+    EntityInputHandler, FocusHandle, Focusable, Image, ImageFormat, ImgResourceLoader,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PathPromptOptions, Pixels, Point, PromptLevel, ScrollHandle,
+    UTF16Selection, Window,
     WindowAppearance, actions,
-    deferred, div, fill, font, img, point, prelude::*, px, size,
+    deferred, div, font, img, point, prelude::*, px, size,
 };
 use notify::RecommendedWatcher;
 use unicode_segmentation::UnicodeSegmentation;
@@ -92,56 +91,10 @@ actions!(
     ]
 );
 
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RenderClass {
-    Blank,
-    Prose,
-    Code,
-}
-
-trait GridWidget {
-    fn block_index(&self) -> usize;
-    fn top_row(&self) -> usize;
-    fn rows(&self) -> usize;
-    fn render_class(&self) -> RenderClass;
-}
-
-#[derive(Clone, Copy)]
-struct BlockWidget {
-    index: usize,
-    top_row: usize,
-    rows: usize,
-    render_class: RenderClass,
-}
-
-impl GridWidget for BlockWidget {
-    fn block_index(&self) -> usize {
-        self.index
-    }
-
-    fn top_row(&self) -> usize {
-        self.top_row
-    }
-
-    fn rows(&self) -> usize {
-        self.rows
-    }
-
-    fn render_class(&self) -> RenderClass {
-        self.render_class
-    }
-}
-
-#[derive(Clone)]
-pub struct HitLine {
-    pub block: usize,
-    pub source: Range<usize>,
-    pub bounds: Bounds<Pixels>,
-    pub paint_origin: Point<Pixels>,
-    pub layout: WrappedLine,
-    pub map: Option<Vec<usize>>,
-}
+use crate::element::{
+    BlockWidget, DocumentElement, HitLine, RenderClass, source_offset_for_hit,
+    vertical_distance,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum OpenMenu {
@@ -207,9 +160,9 @@ struct History {
 
 /// The caret/selection state: the selected byte range and the ancillary flags
 /// that shape how it moves and renders.
-struct Selection {
+pub(crate) struct Selection {
     /// Selected byte range; empty (`start == end`) means a bare caret.
-    range: Range<usize>,
+    pub(crate) range: Range<usize>,
     /// Whether the caret is the range's start (selecting leftward).
     reversed: bool,
     /// IME pre-edit range, if a composition is in progress.
@@ -219,9 +172,9 @@ struct Selection {
     /// Sticky column for vertical caret motion across short lines.
     preferred_column: Option<usize>,
     /// Pending scroll anchor: (source offset, screen y) to hold steady.
-    pending_anchor: Option<(usize, Pixels)>,
+    pub(crate) pending_anchor: Option<(usize, Pixels)>,
     /// Request to scroll the caret into view on the next paint.
-    ensure_caret_visible: bool,
+    pub(crate) ensure_caret_visible: bool,
 }
 
 impl Default for Selection {
@@ -242,19 +195,19 @@ impl Default for Selection {
 /// lines from the last paint, the document bounds, and which blocks are
 /// revealed as editable source.
 #[derive(Default)]
-struct LayoutState {
-    shapes: HashMap<BlockId, ShapeCache>,
-    hit_lines: Vec<HitLine>,
-    doc_bounds: Option<Bounds<Pixels>>,
-    revealed: HashSet<BlockId>,
+pub(crate) struct LayoutState {
+    pub(crate) shapes: HashMap<BlockId, ShapeCache>,
+    pub(crate) hit_lines: Vec<HitLine>,
+    pub(crate) doc_bounds: Option<Bounds<Pixels>>,
+    pub(crate) revealed: HashSet<BlockId>,
 }
 
 /// Resolved appearance: whether we're painting dark, the user's preference it
 /// derives from, and the background dot opacity.
-struct ThemeState {
-    dark: bool,
+pub(crate) struct ThemeState {
+    pub(crate) dark: bool,
     theme: ThemePreference,
-    dot_opacity: f32,
+    pub(crate) dot_opacity: f32,
 }
 
 /// The save/persistence lifecycle: the last-saved text (for dirty detection),
@@ -273,15 +226,15 @@ struct SaveState {
 
 pub struct Editor {
     path: Option<PathBuf>,
-    focus: FocusHandle,
-    document: DocumentModel,
-    sel: Selection,
-    layout: LayoutState,
-    vertical_scroll: ScrollHandle,
-    horizontal_scroll: ScrollHandle,
+    pub(crate) focus: FocusHandle,
+    pub(crate) document: DocumentModel,
+    pub(crate) sel: Selection,
+    pub(crate) layout: LayoutState,
+    pub(crate) vertical_scroll: ScrollHandle,
+    pub(crate) horizontal_scroll: ScrollHandle,
     history: History,
     status: String,
-    theming: ThemeState,
+    pub(crate) theming: ThemeState,
     save: SaveState,
     config: AppConfig,
     open_menu: Option<OpenMenu>,
@@ -1076,7 +1029,7 @@ impl Editor {
         self.status = "loaded disk version".into();
     }
 
-    fn cursor(&self) -> usize {
+    pub(crate) fn cursor(&self) -> usize {
         if self.sel.reversed {
             self.sel.range.start
         } else {
@@ -1615,7 +1568,7 @@ impl Editor {
         self.sel.selecting = false
     }
 
-    fn ensure_shapes(&mut self, window: &mut Window, cx: &mut App) {
+    pub(crate) fn ensure_shapes(&mut self, window: &mut Window, cx: &mut App) {
         let revealed = self.layout.revealed.clone();
         let caret = self.cursor();
         let palette = palette(self.theming.dark);
@@ -1686,7 +1639,7 @@ impl Editor {
         }
     }
 
-    fn grid_widgets(&self) -> Vec<BlockWidget> {
+    pub(crate) fn grid_widgets(&self) -> Vec<BlockWidget> {
         let mut top_row = 0;
         self.document
             .blocks
@@ -1710,107 +1663,11 @@ impl Editor {
             .collect()
     }
 
-    fn total_rows(&self) -> usize {
+    pub(crate) fn total_rows(&self) -> usize {
         self.grid_widgets()
             .last()
             .map_or(0, |widget| widget.top_row + widget.rows)
     }
-}
-
-fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> usize {
-    let local = point(
-        position.x - line.paint_origin.x,
-        position.y - line.paint_origin.y,
-    );
-    let display = line
-        .layout
-        .closest_index_for_position(local, px(GRID))
-        .unwrap_or_else(|index| index);
-    if let Some(map) = &line.map {
-        map.get(display.min(map.len().saturating_sub(1)))
-            .copied()
-            .unwrap_or(line.source.start)
-    } else {
-        line.source.start + display.min(line.source.len())
-    }
-}
-
-fn inline_code_decorations(
-    layout: &WrappedLine,
-    origin: Point<Pixels>,
-    bounds: Bounds<Pixels>,
-    ranges: &[Range<usize>],
-) -> Vec<Bounds<Pixels>> {
-    const HORIZONTAL_PADDING: f32 = 3.;
-    const VERTICAL_PADDING: f32 = 2.;
-    let mut result = Vec::new();
-    for range in ranges {
-        let Some(start) = layout.position_for_index(range.start, px(GRID)) else {
-            continue;
-        };
-        let Some(end) = layout.position_for_index(range.end, px(GRID)) else {
-            continue;
-        };
-        let push = |result: &mut Vec<Bounds<Pixels>>,
-                    y: Pixels,
-                    left: Pixels,
-                    right: Pixels| {
-            let left = (origin.x + left - px(HORIZONTAL_PADDING)).max(bounds.left());
-            let right = (origin.x + right + px(HORIZONTAL_PADDING)).min(bounds.right());
-            if right > left {
-                result.push(Bounds::new(
-                    point(left, origin.y + y - px(VERTICAL_PADDING)),
-                    size(
-                        right - left,
-                        px(GRID + VERTICAL_PADDING * 2. + 2.),
-                    ),
-                ));
-            }
-        };
-        if start.y == end.y {
-            push(&mut result, start.y, start.x, end.x);
-        } else {
-            push(&mut result, start.y, start.x, bounds.size.width);
-            push(&mut result, end.y, px(0.), end.x);
-        }
-    }
-    result
-}
-
-fn vertical_distance(bounds: Bounds<Pixels>, y: Pixels) -> f32 {
-    if y < bounds.top() {
-        (bounds.top() - y).into()
-    } else if y > bounds.bottom() {
-        (y - bounds.bottom()).into()
-    } else {
-        0.
-    }
-}
-
-fn paint_outline(window: &mut Window, bounds: Bounds<Pixels>, color: Hsla) {
-    let stroke = px(1.);
-    window.paint_quad(fill(
-        Bounds::new(bounds.origin, size(bounds.size.width, stroke)),
-        color,
-    ));
-    window.paint_quad(fill(
-        Bounds::new(
-            point(bounds.left(), bounds.bottom() - stroke),
-            size(bounds.size.width, stroke),
-        ),
-        color,
-    ));
-    window.paint_quad(fill(
-        Bounds::new(bounds.origin, size(stroke, bounds.size.height)),
-        color,
-    ));
-    window.paint_quad(fill(
-        Bounds::new(
-            point(bounds.right() - stroke, bounds.top()),
-            size(stroke, bounds.size.height),
-        ),
-        color,
-    ));
 }
 
 // Window::dummy does not exist; keep cut explicit instead of sharing the action handler.
@@ -2365,398 +2222,5 @@ impl Render for Editor {
                     .with_priority(20),
                 )
             })
-    }
-}
-
-pub struct DocumentElement {
-    pub editor: Entity<Editor>,
-}
-pub struct Prepared {
-    pub lines: Vec<HitLine>,
-    pub code_slabs: Vec<(usize, Bounds<Pixels>)>,
-    pub inline_code_boxes: Vec<Bounds<Pixels>>,
-    pub images: Vec<PreparedImage>,
-    pub cursor: Option<PaintQuad>,
-    pub selection: Vec<PaintQuad>,
-    pub visible: Bounds<Pixels>,
-    pub anchor_delta: Option<Pixels>,
-}
-
-pub struct PreparedImage {
-    pub surface: Bounds<Pixels>,
-    pub bounds: Option<Bounds<Pixels>>,
-    pub data: Option<Arc<RenderImage>>,
-    pub fallback: Option<(WrappedLine, Point<Pixels>)>,
-}
-impl IntoElement for DocumentElement {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
-}
-impl Element for DocumentElement {
-    type RequestLayoutState = ();
-    type PrepaintState = Prepared;
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        self.editor.update(cx, |e, cx| e.ensure_shapes(window, cx));
-        let rows = self.editor.read(cx).total_rows();
-        let mut s = Style::default();
-        s.size.width = px(DOCUMENT_WIDTH).into();
-        s.size.height = px(FIRST_BASELINE + rows as f32 * GRID + GRID).into();
-        (window.request_layout(s, [], cx), ())
-    }
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Prepared {
-        let e = self.editor.read(cx);
-        let colors = palette(e.theming.dark);
-        let visible = window.content_mask().bounds;
-        let overscan = Bounds::from_corners(
-            point(visible.left(), visible.top() - visible.size.height),
-            point(visible.right(), visible.bottom() + visible.size.height),
-        );
-        let mut lines = Vec::new();
-        let mut code_slabs = Vec::new();
-        let mut inline_code_boxes = Vec::new();
-        let mut images = Vec::new();
-        let mut cursor = None;
-        let mut selections = Vec::new();
-        let mut anchor_delta = None;
-        for widget in e.grid_widgets() {
-            let bi = widget.block_index();
-            let b = &e.document.blocks[bi];
-            let c = &e.layout.shapes[&b.id];
-            let shown = if e.layout.revealed.contains(&b.id) {
-                c.raw.as_ref().unwrap()
-            } else {
-                c.rendered.as_ref().unwrap()
-            };
-            let block_rows = widget.rows();
-            let block_top =
-                bounds.top() + px(FIRST_BASELINE + widget.top_row() as f32 * GRID - GRID);
-            let block_bottom = block_top + px(block_rows as f32 * GRID);
-            let active = e.layout.revealed.contains(&b.id);
-            if let Some((source, screen_y)) = e.sel.pending_anchor
-                && bi == e.document.block_at(source)
-            {
-                anchor_delta = Some(screen_y - block_top);
-            }
-            if active || block_bottom >= overscan.top() && block_top <= overscan.bottom() {
-                if widget.render_class() == RenderClass::Code {
-                    code_slabs.push((
-                        bi,
-                        Bounds::from_corners(
-                            point(bounds.left() + px(INSET), block_top),
-                            point(bounds.left() + px(INSET + WRAP_WIDTH), block_bottom),
-                        ),
-                    ));
-                }
-                let mut row = 0;
-                for line in shown {
-                    if line.source.start > b.range.end {
-                        row = row.max(block_rows);
-                    }
-                    let n = line_rows(line);
-                    let baseline =
-                        bounds.top() + px(FIRST_BASELINE + (widget.top_row() + row) as f32 * GRID);
-                    let pad = (px(GRID) - line.layout.ascent() - line.layout.descent()) / 2.;
-                    let paint_top = baseline - pad - line.layout.ascent();
-                    let cell_top = block_top + px(row as f32 * GRID);
-                    let code_inset = if line.code { 12. } else { 0. };
-                    let lb = Bounds::new(
-                        point(bounds.left() + px(INSET + code_inset), cell_top),
-                        size(px(WRAP_WIDTH - code_inset * 2.), px(n as f32 * GRID)),
-                    );
-                    if let Some(image) = &line.image {
-                        let image_bounds = image.data.as_ref().map(|data| {
-                            let dimensions = data.size(0);
-                            let ratio = dimensions.width.0.max(1) as f32
-                                / dimensions.height.0.max(1) as f32;
-                            let height = n as f32 * GRID;
-                            let width = (height * ratio).min(WRAP_WIDTH);
-                            Bounds::new(
-                                point(lb.left() + (px(WRAP_WIDTH) - px(width)) / 2., lb.top()),
-                                size(px(width), px(height)),
-                            )
-                        });
-                        let fallback = image.failed.then(|| {
-                            let text = if image.alt.is_empty() {
-                                "Image failed to load".to_string()
-                            } else {
-                                image.alt.clone()
-                            };
-                            let layout = window
-                                .text_system()
-                                .shape_text(
-                                    SharedString::from(text.clone()),
-                                    px(13.5),
-                                    &[TextRun {
-                                        len: text.len(),
-                                        font: font(PROSE_FONT),
-                                        color: color(0xcf222e),
-                                        background_color: None,
-                                        underline: None,
-                                        strikethrough: None,
-                                    }],
-                                    Some(px(WRAP_WIDTH - 16.)),
-                                    None,
-                                )
-                                .unwrap()
-                                .remove(0);
-                            let origin = point(lb.left() + px(8.), lb.top() + px(GRID / 2.));
-                            (layout, origin)
-                        });
-                        images.push(PreparedImage {
-                            surface: lb,
-                            bounds: image_bounds,
-                            data: image.data.clone(),
-                            fallback,
-                        });
-                    }
-                    let paint_origin = point(lb.left(), paint_top);
-                    inline_code_boxes.extend(inline_code_decorations(
-                        &line.layout,
-                        paint_origin,
-                        lb,
-                        &line.inline_code,
-                    ));
-                    let hit = HitLine {
-                        block: bi,
-                        source: line.source.clone(),
-                        bounds: lb,
-                        paint_origin,
-                        layout: line.layout.clone(),
-                        map: line.map.clone(),
-                    };
-                    if active && line.map.is_none() {
-                        let pos = e
-                            .cursor()
-                            .saturating_sub(line.source.start)
-                            .min(line.source.len());
-                        if line.source.start <= e.cursor()
-                            && e.cursor() <= line.source.end
-                            && e.sel.range.is_empty()
-                        {
-                            if let Some(p) = line.layout.position_for_index(pos, px(GRID)) {
-                                cursor = Some(fill(
-                                    Bounds::new(
-                                        point(paint_origin.x + p.x, paint_origin.y + p.y),
-                                        size(px(1.5), px(GRID)),
-                                    ),
-                                    colors.accent,
-                                ))
-                            }
-                        }
-                        let overlap = e.sel.range.start.max(line.source.start)
-                            ..e.sel.range.end.min(line.source.end);
-                        if overlap.start < overlap.end {
-                            if let (Some(a), Some(z)) = (
-                                line.layout.position_for_index(
-                                    overlap.start - line.source.start,
-                                    px(GRID),
-                                ),
-                                line.layout
-                                    .position_for_index(overlap.end - line.source.start, px(GRID)),
-                            ) {
-                                selections.push(fill(
-                                    Bounds::from_corners(
-                                        point(paint_origin.x + a.x, paint_origin.y + a.y),
-                                        point(
-                                            paint_origin.x + z.x,
-                                            paint_origin.y + z.y + px(GRID),
-                                        ),
-                                    ),
-                                    colors.selection,
-                                ))
-                            }
-                        }
-                    }
-                    lines.push(hit);
-                    row += n;
-                }
-            }
-        }
-        Prepared {
-            lines,
-            code_slabs,
-            inline_code_boxes,
-            images,
-            cursor,
-            selection: selections,
-            visible,
-            anchor_delta,
-        }
-    }
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut (),
-        p: &mut Prepared,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let editor = self.editor.read(cx);
-        let colors = palette(editor.theming.dark);
-        let left = p.visible.left().max(bounds.left());
-        let right = p.visible.right().min(bounds.right());
-        let top = p.visible.top().max(bounds.top());
-        let bottom = p.visible.bottom().min(bounds.bottom());
-        let grid_left = bounds.left() + px(INSET);
-        let grid_right = bounds.right() - px(INSET);
-        let grid_top = bounds.top() + px(GRID);
-        let c0 = ((left.max(grid_left) - grid_left) / px(GRID)).floor() as i32;
-        // Include the closing grid post at the inner edge of the 24 px page
-        // margin. The quad itself remains inside the paper bounds.
-        let last_inner_column = (((grid_right - grid_left) / px(GRID)).floor() as i32).max(0);
-        let c1 =
-            (((right.min(grid_right) - grid_left) / px(GRID)).ceil() as i32).min(last_inner_column);
-        let r0 = ((top.max(grid_top) - grid_top) / px(GRID)).floor() as i32;
-        let last_row = (((bounds.bottom() - grid_top) / px(GRID)).floor() as i32 - 1).max(0);
-        let r1 = (((bottom - grid_top) / px(GRID)).ceil() as i32).min(last_row);
-        for r in r0..=r1 {
-            for c in c0..=c1 {
-                window.paint_quad(
-                    fill(
-                        Bounds::new(
-                            point(
-                                grid_left + px(c as f32 * GRID),
-                                grid_top + px(r as f32 * GRID),
-                            ),
-                            size(px(2.), px(2.)),
-                        ),
-                        alpha(colors.fg, editor.theming.dot_opacity),
-                    )
-                    .corner_radii(px(1.)),
-                )
-            }
-        }
-
-        for (_, outer) in p.code_slabs.iter().copied() {
-            window.paint_quad(fill(outer, colors.code_border).corner_radii(px(6.)));
-            let inner = Bounds::from_corners(
-                point(outer.left() + px(1.), outer.top() + px(1.)),
-                point(outer.right() - px(1.), outer.bottom() - px(1.)),
-            );
-            window.paint_quad(fill(inner, colors.code_bg).corner_radii(px(5.)));
-        }
-        for image in &p.images {
-            window.paint_quad(fill(image.surface, colors.bg));
-            if let (Some(bounds), Some(data)) = (image.bounds, image.data.clone()) {
-                let _ = window.paint_image(bounds, px(6.).into(), data, 0, false);
-            } else if let Some((layout, origin)) = &image.fallback {
-                paint_outline(window, image.surface, color(0xcf222e));
-                let _ = layout.paint(
-                    *origin,
-                    px(GRID),
-                    TextAlign::Left,
-                    Some(image.surface),
-                    window,
-                    cx,
-                );
-            }
-        }
-        for q in p.selection.drain(..) {
-            window.paint_quad(q)
-        }
-        for slab in &p.inline_code_boxes {
-            window.paint_quad(fill(*slab, colors.code_bg).corner_radii(px(4.)));
-        }
-        for l in &p.lines {
-            let _ = l.layout.paint(
-                l.paint_origin,
-                px(GRID),
-                TextAlign::Left,
-                Some(l.bounds),
-                window,
-                cx,
-            );
-        }
-        let had_cursor = p.cursor.is_some();
-        if let Some(q) = p.cursor.take() {
-            if self.editor.read(cx).sel.ensure_caret_visible {
-                let vertical = &self.editor.read(cx).vertical_scroll;
-                let vertical_view = vertical.bounds();
-                let mut vertical_offset = vertical.offset();
-                let old_vertical = vertical_offset;
-                if q.bounds.bottom() > vertical_view.bottom() {
-                    vertical_offset.y -= q.bounds.bottom() - vertical_view.bottom()
-                } else if q.bounds.top() < vertical_view.top() {
-                    vertical_offset.y += vertical_view.top() - q.bounds.top()
-                }
-                vertical_offset.y = vertical_offset
-                    .y
-                    .clamp(-vertical.max_offset().height, px(0.));
-                if vertical_offset != old_vertical {
-                    vertical.set_offset(vertical_offset);
-                    window.request_animation_frame();
-                }
-
-                let horizontal = &self.editor.read(cx).horizontal_scroll;
-                let horizontal_view = horizontal.bounds();
-                let mut horizontal_offset = horizontal.offset();
-                let old_horizontal = horizontal_offset;
-                if q.bounds.right() > horizontal_view.right() {
-                    horizontal_offset.x -= q.bounds.right() - horizontal_view.right()
-                } else if q.bounds.left() < horizontal_view.left() {
-                    horizontal_offset.x += horizontal_view.left() - q.bounds.left()
-                }
-                horizontal_offset.x = horizontal_offset
-                    .x
-                    .clamp(-horizontal.max_offset().width, px(0.));
-                if horizontal_offset != old_horizontal {
-                    horizontal.set_offset(horizontal_offset);
-                    window.request_animation_frame();
-                }
-            }
-            window.paint_quad(q)
-        }
-        let applied_anchor = p.anchor_delta.is_some();
-        if let Some(delta) = p.anchor_delta.take() {
-            let scroll = &self.editor.read(cx).vertical_scroll;
-            let mut offset = scroll.offset();
-            let old_offset = offset;
-            offset.y += delta;
-            let max = scroll.max_offset();
-            offset.y = offset.y.clamp(-max.height, px(0.));
-            if offset != old_offset {
-                scroll.set_offset(offset);
-                window.request_animation_frame();
-            }
-        }
-        window.handle_input(
-            &self.editor.read(cx).focus,
-            ElementInputHandler::new(bounds, self.editor.clone()),
-            cx,
-        );
-        self.editor.update(cx, |e, _| {
-            e.layout.hit_lines = p.lines.clone();
-            e.layout.doc_bounds = Some(bounds);
-            if had_cursor {
-                e.sel.ensure_caret_visible = false;
-            }
-            if applied_anchor {
-                e.sel.pending_anchor = None;
-            }
-        });
     }
 }
