@@ -1,5 +1,0 @@
-/* Injected as a <style> tag while the plugin is enabled; removed on disable. */
-.hello-todo {
-  color: var(--danger, #d33);
-  font-weight: 600;
-}

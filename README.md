@@ -1,169 +1,153 @@
-<p align="center">
-  <img src=".github/logo.png" alt="bulletmd logo" width="128">
-</p>
+# BulletMD retained GPUI POC
 
-<h1 align="center">bulletmd</h1>
+This Fedora-only prototype tests BulletMD's live Markdown interaction directly
+on published `gpui` 0.2.2. It is isolated from the production Tauri app.
 
-<p align="center">
-  A minimalist Markdown editor that renders everything except the block you're actively editing.
-</p>
+## Retained architecture
 
-bulletmd is a digital bullet journal built on plain Markdown files. 
-On a subtle dot-grid background, edit your notes as raw Markdown while the rest of the document renders in place.
+The document is parsed once at open into stable block objects. Each block owns
+its source range, source lines, parsed/styled rendering, rendered-to-source byte
+map, and cached raw/rendered GPUI shapes. Cached row counts define the complete
+scroll extent.
 
-![bulletmd](.github/demo.gif)
+Normal text input changes only the active block's raw source and invalidates
+only its raw shape. Inactive parsed and shaped blocks retain their identity and
+caches. Navigation commits the old block and reveals the new one. Enter locally
+resegments only the active region. Backspace/Delete at a block boundary fuse
+exactly the adjacent pair; the bounded parser cannot let an unmatched fence
+consume a third block. A cross-block selection reveals its contiguous blocks
+and replacement locally resegments that range. Escape is the deliberate global
+commit: it reparses all source, assigns new block identities, and leaves editing.
 
-## Why bulletmd?
+The surface is exactly 768 px wide, with a 720 px shaped-text column. It does
+not reshape when the window resizes: wide viewports center it and narrow ones
+scroll horizontally. Baselines are exactly `48 + 24n`; cached block heights are
+whole 24 px rows. Painting visits only visible blocks plus one viewport of
+overscan, while grid dots are limited to the current viewport.
 
-Most Markdown editors force you to choose between two modes:
+Rendered lines retain byte-boundary maps into source, so one click places the
+caret in the revealed source and hidden punctuation snaps to the nearest mapped
+boundary. Bold, italic, inline code, links, lists, headings, and fenced code use
+resolved GPUI font/style runs.
 
-- raw Markdown that is precise but visually noisy;
-- a rich-text editor that looks clean but hides the underlying syntax.
+## Build and run
 
-bulletmd keeps both aligned in a single view.
-Put your cursor in a heading, link, citation, or formatted block to edit its Markdown directly.
-Move away, and it returns to its rendered form.
-
-No split pane. No preview mode. No switching contexts.
-
-## Features
-
-### Aligned live preview
-
-The block under your cursor shows its raw Markdown source; every other block renders rich — the [Typora](https://typora.io/) / [Obsidian](https://obsidian.md/) "live preview" model.
-Revealing a block only makes the markup characters *appear*: the text itself never restyles or reflows.
-
-- **GitHub-Flavored Markdown** — headings, emphasis, links, lists, clickable
-  task checkboxes, fenced code with syntax highlighting, blockquotes, images.
-- **LaTeX math** via KaTeX — inline `$x$` and block `$$…$$`.
-- **Footnotes** — `[^ref]` references and definitions.
-- **Inline images**, including ones **pasted from the clipboard** — the bytes
-  are saved into an assets directory and an `![](…)` reference is inserted.
-
-### Minimal and fast
-
-bulletmd is designed to stay out of the way: fast launch, responsive editing, a
-minimal interface, and no unnecessary formatting controls.
-
-- **Real files, safely** — debounced autosave (~1s), atomic writes that preserve
-  file permissions, clean auto-reload that keeps your undo history and cursor,
-  and a conflict prompt when the file changed on disk while your buffer is dirty.
-- **Markdown shortcuts** — `Ctrl/Cmd+B` / `I` / `E` toggle bold / italic /
-  inline code, `Ctrl/Cmd+K` wraps a link, `Tab` / `Shift+Tab` nest and un-nest
-  list items.
-- **Search & replace** with regex, match-case, and whole-word toggles
-  (`Ctrl/Cmd+F`)..
-- **One window, one file.** `bulletmd file.md` opens an editor; each file is its
-  own process, matching your window manager and desktop file associations.
-
-### Modular plugin system
-
-bulletmd keeps its core intentionally small. Additional functionality is
-provided through optional plugins, so features that don't belong in the core
-editor stay out of your way until you want them.
-
-| Plugin      | Description                                          |
-| ----------- | ---------------------------------------------------- |
-| Zotero      | Insert and manage Pandoc-style citations from Zotero |
-| Spell check | Inline spelling and language checks                  |
-| PDF export  | Export documents to PDF                              |
-| Page break  | Insert page breaks for printing and export           |
-
-The plugin system can also add custom commands, integrations, and
-document-processing tools. See [`plugins/`](plugins/README.md) for each bundled
-plugin and its setup guide.
-
-## Installing
-
-> **Status:** Linux packages are available as `.deb`, `.rpm`, and AppImage.
-> macOS application and DMG bundles are configured but still need testing on
-> supported Apple hardware. Windows remains untested.
-
-Download the latest bundle for your platform from the
-[Releases page](https://github.com/Garfield1002/bulletmd/releases).
-
-### Linux
-
-Install the `.deb` or `.rpm` to register bulletmd's application entry, icon, and
-`text/markdown` file association with your desktop. The AppImage is portable but
-does not install a permanent application-menu entry by itself.
-
-### macOS
-
-Move `bulletmd.app` into Applications, or install it from the DMG. Finder opens
-associated `.md` / `.markdown` documents through the native application, opening
-a separate window (process) for each document.
-
-Prefer building from source? See [DEVELOPERS.md](DEVELOPERS.md).
-
-## Using bulletmd
-
-| Action | How |
-| --- | --- |
-| Open a file | `bulletmd file.md`, or File → Open |
-| New untitled buffer | `bulletmd` with no argument, or File → New |
-| New window | File → New Window (spawns a separate process) |
-| Save | `Ctrl/Cmd+S` (untitled buffers prompt for a location) |
-| Bold / italic / inline code | `Ctrl/Cmd+B` / `I` / `E` |
-| Insert link | `Ctrl/Cmd+K` |
-| Follow a link | `Ctrl/Cmd+Click` |
-| Nest / un-nest a list item | `Tab` / `Shift+Tab` |
-| Find & replace | `Ctrl/Cmd+F` |
-| Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` (or `Ctrl+Y`) |
-| Paste an image | `Ctrl/Cmd+V` with an image on the clipboard |
-| Toggle a checkbox | Click it |
-
-### Pasting images
-
-Pasting an image from the clipboard writes it to `assets/` under your config home
-and inserts an `![](/absolute/path)` reference at the cursor. The image renders
-immediately in live preview.
-
-The assets directory is shared, not co-located with the note, and the reference
-uses an absolute path — so a document that lives anywhere can reference it, but
-the Markdown is not self-contained if you move it to another machine.
-
-## Configuration
-
-bulletmd keeps a small `state.json` (recent files and appearance preferences) and
-the pasted-image `assets/` directory under its **config home**:
-
-1. `$BULLETMD_HOME`, if set and non-empty;
-2. otherwise `$XDG_CONFIG_HOME/bulletmd` (or `~/.config/bulletmd`).
-
-Set `BULLETMD_HOME` to relocate everything bulletmd persists:
+Fedora requires:
 
 ```bash
-export BULLETMD_HOME="$HOME/notes/.bulletmd"
+sudo dnf install libxkbcommon-x11-devel
 ```
 
-> **Note:** pasted images render through Tauri's asset protocol, whose scope is
-> `$HOME/**`. If you point `BULLETMD_HOME` outside your home directory, pasted
-> images will save but won't display until that scope is widened.
+Then:
 
+```bash
+cargo test
+cargo build --release --bin bulletmd-native-poc
+./target/release/bulletmd-native-poc fixtures/sample.md
+```
 
-## Philosophy
+Controls include arrows, Shift+arrows, Ctrl+Left/Right word navigation,
+Ctrl+Shift+Left/Right word selection, Ctrl+Backspace word deletion, Home/End,
+clipboard commands, Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y, Ctrl+S, and Escape. Markdown
+shortcuts exactly match the existing CodeMirror commands:
 
-bulletmd is built around three principles:
+- Ctrl+B toggles `**`
+- Ctrl+I toggles `*`
+- Ctrl+E toggles backticks
+- Ctrl+K replaces the selection with `[selection]()` and places the caret in
+  the URL
 
-1. Markdown should remain visible and editable.
-2. Rendered documents should remain readable while editing.
-3. Advanced features should be optional.
+The native File menu supports new documents and windows, open and recent files,
+save/save-as, rename, delete, copy path, and reveal in the system file manager.
+Saved files autosave after five quiet seconds through an atomic same-directory
+replacement. A parent-directory watcher handles rename-based external saves:
+clean buffers reload, while dirty buffers show a Keep Mine / Load Disk conflict
+choice. Closing or switching away from dirty content requires confirmation.
 
-## Status
+Settings shares the production `state.json` and provides System/Light/Dark
+themes plus dot-grid opacity presets from 0% to 30%.
 
-bulletmd is under active development. Feedback, bug reports, plugin ideas, and
-contributions are welcome.
+Standalone Markdown images render in place while inactive and reveal their raw
+`![alt](source)` when clicked. Filesystem paths resolve relative to the note,
+absolute paths and HTTP(S) URLs use GPUI's asynchronous image cache, and image
+height snaps to the same 24 px grid as text. Pasting an image stores it under
+`BULLETMD_HOME/assets/` and inserts an absolute Markdown reference.
 
-## Development
+## Verification and instrumentation
 
-Architecture notes, the live-preview engine design, the Rust backend, build
-instructions, and plugin APIs live in:
+Pure retained-model behavior and mappings are covered by eight tests. They
+prove that 100 ordinary inserts parse zero blocks, preserve inactive block
+identities, and invalidate only the active ID; Enter reparses one bounded
+region; a boundary deletion fuses exactly two blocks; an unmatched local fence
+does not absorb the third block; and ordered-list/source mappings survive.
 
-- [DEVELOPERS.md](DEVELOPERS.md) — building from source, architecture, and dev workflow
-- [docs/PLAN.md](docs/PLAN.md) — the full design decision record
-- [docs/PLUGINS.md](docs/PLUGINS.md) — the plugin API
+The display-independent release benchmark is:
 
-## License
+```bash
+cargo build --release --bin model_bench
+./target/release/model_bench fixtures/sample.md
+```
 
-[MIT](LICENSE.md)
+On the development Fedora machine after this rewrite:
+
+| operation | release time |
+| --- | ---: |
+| 100 ordinary retained-model inserts | 0.156-0.163 ms total |
+| Enter local resegment | 0.008-0.012 ms |
+| boundary fusion | 0.005-0.007 ms |
+| Escape global reparse | 0.144-0.168 ms |
+
+These are model costs, not paint latency. For real edit-to-paint measurement,
+the app accepts `BULLETMD_BENCH_EDIT=100`; after first paint it inserts one
+character per frame and emits `EDIT_LATENCY_100 median_ms=... p95_ms=...
+max_ms=...`. Every ordinary edit also records receipt-to-next-CPU-paint latency.
+
+```bash
+BULLETMD_BENCH_EDIT=100 ./target/release/bulletmd-native-poc fixtures/sample.md
+./benchmark.sh native
+```
+
+The rewritten release app was launched against the real Fedora Wayland
+compositor. Two warmed retained-renderer runs measured 65.84-65.96 MiB PSS,
+71.57-71.68 MiB RSS, and 106.958-116.577 ms to first CPU-side paint. Additional
+post-link/cooler runs ranged up to 314.024 ms, so the strict cold 250 ms startup
+target is not consistently met.
+
+Two 100-edit animation-frame runs measured:
+
+| run | median | p95 | maximum |
+| --- | ---: | ---: | ---: |
+| warmed 1 | 16.697 ms | 17.570 ms | 43.857 ms |
+| warmed 2 | 16.640 ms | 17.518 ms | 18.449 ms |
+
+The counters were exactly `raw_reshapes=101` (one initial active shape plus 100
+edits), `rendered_reshapes=71` (initial blocks only), `local_reparses=0`, and
+`parsed_blocks=0`. This proves the retained invalidation path, but the measured
+distribution **fails** the median <4 ms, p95 <8 ms, and maximum <16.7 ms targets.
+The synthetic driver deliberately receives each edit just after a paint and
+requests the following animation frame, so its approximately 16.7 ms floor
+includes one 60 Hz frame interval. Real keyboard-event sampling is still needed
+to separate scheduling delay from CPU parse/shape/paint work; the model work for
+100 inserts is only 0.156-0.163 ms total.
+
+## Known limitations
+
+- The bounded block scanner is deliberately smaller than CommonMark.
+- Undo/redo applies compact edit transactions but currently performs a global
+  cache rebuild when traversing history.
+- IME uses GPUI's platform handler and local UTF-16/UTF-8 conversion, but Fedora
+  compose/dead-key behavior still needs a real-desktop smoke test.
+- Caret auto-scroll and two-dimensional wheel/trackpad behavior use
+  `ScrollHandle`; the automated compositor launch exercised painting and frame
+  scheduling, but manual wheel/trackpad interaction remains to be checked.
+- Accessibility completion, bidi validation, plugins, inline mixed-text images,
+  animated-image frame advancement, math, tables,
+  export, packaging, macOS, and Windows remain out of scope.
+
+## Recommendation
+
+The retained design removes the known whole-document parse/shape/paint path and
+its invariants are test-backed. It is ready for desktop latency and scroll
+validation, not for a production migration decision. Continue only if the
+instrumented Fedora run meets the edit-latency targets without regressing the
+previous memory advantage.
