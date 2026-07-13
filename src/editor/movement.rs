@@ -500,18 +500,20 @@ impl Editor {
         }
     }
     /// How many history steps this press should apply. Consecutive presses in
-    /// the same direction within a short window form a "run" whose length grows
-    /// the batch (1, 1, 2, 2, 4, …), so a held Ctrl+Z accelerates through
-    /// history instead of moving one step per repeat.
+    /// the same direction within a short window form a "run" whose length gently
+    /// grows the batch (1, 1, 1, 1, 2, 2, 2, 2, 3, …), so a held Ctrl+Z speeds
+    /// up a little instead of moving one step per repeat — capped so it never
+    /// races uncontrollably.
     fn history_batch(&mut self, dir: isize) -> usize {
         const GAP: std::time::Duration = std::time::Duration::from_millis(250);
+        const MAX_BATCH: u32 = 4;
         let now = std::time::Instant::now();
         let run = match self.history_repeat {
             Some((last, d, run)) if d == dir && now.duration_since(last) < GAP => run + 1,
             _ => 0,
         };
         self.history_repeat = Some((now, dir, run));
-        (1usize << (run / 2).min(6)).min(64)
+        (1 + run / 4).min(MAX_BATCH) as usize
     }
 
     /// Pops one transaction off `self.history.undo`, applies its inverse, and
