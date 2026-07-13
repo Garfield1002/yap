@@ -46,6 +46,7 @@ impl RenderLine {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlockKind {
+    Blank,
     Paragraph,
     Heading(u8),
     List,
@@ -141,40 +142,11 @@ impl DocumentModel {
         &self.content[range.clone()]
     }
 
-    /// Source lines shown while a block is being edited. Separator lines are
-    /// included only when the caret actually occupies one; merely activating
-    /// a block must not expand it by every blank line before the next block.
-    pub fn editing_lines(&self, index: usize, caret: usize) -> Vec<Range<usize>> {
-        let block = &self.blocks[index];
-        let next_start = self
-            .blocks
-            .get(index + 1)
-            .map_or(self.content.len(), |next| next.range.start);
-        let in_separator = caret > block.range.end && caret < next_start;
-        let final_eof_row = index + 1 == self.blocks.len()
-            && caret == self.content.len()
-            && self.content.ends_with('\n');
-        if in_separator || final_eof_row {
-            source_lines_for_editing(
-                &self.content,
-                block.range.start..next_start.max(block.range.end),
-                index + 1 < self.blocks.len(),
-            )
-        } else {
-            block.raw_lines.clone()
-        }
-    }
-
-    /// Number of visually empty source rows between this block and the next.
-    pub fn separator_rows_after(&self, index: usize) -> usize {
-        let Some(next) = self.blocks.get(index + 1) else {
-            return 0;
-        };
-        self.content[self.blocks[index].range.end..next.range.start]
-            .bytes()
-            .filter(|byte| *byte == b'\n')
-            .count()
-            .saturating_sub(1)
+    /// Source lines shown while a block is being edited. Blank rows are
+    /// represented by their own blocks, so a block never borrows lines from
+    /// the following source block.
+    pub fn editing_lines(&self, index: usize, _caret: usize) -> Vec<Range<usize>> {
+        self.blocks[index].raw_lines.clone()
     }
 
     pub fn commit_block(&mut self, index: usize) -> Option<BlockId> {
@@ -201,12 +173,30 @@ impl DocumentModel {
             EditMode::Ordinary if touched.len() == 1 && !inserted.contains('\n') => None,
             EditMode::FusePrevious => {
                 let active = touched.end - 1;
-                let first = active.saturating_sub(1);
-                Some(first..active + 1)
+                let mut first = active.saturating_sub(1);
+                while first > 0 && self.blocks[first].kind == BlockKind::Blank {
+                    first -= 1;
+                }
+                let mut end = active + 1;
+                while end < self.blocks.len() && self.blocks[end - 1].kind == BlockKind::Blank {
+                    end += 1;
+                }
+                if self.blocks[active].kind == BlockKind::Blank && end < self.blocks.len() {
+                    end += 1;
+                }
+                Some(first..end)
             }
             EditMode::FuseNext => {
                 let active = touched.start;
-                Some(active..(active + 2).min(self.blocks.len()))
+                let mut start = active;
+                while start > 0 && self.blocks[start].kind == BlockKind::Blank {
+                    start -= 1;
+                }
+                let mut end = (active + 2).min(self.blocks.len());
+                while end < self.blocks.len() && self.blocks[end - 1].kind == BlockKind::Blank {
+                    end += 1;
+                }
+                Some(start..end)
             }
             _ => Some(touched.clone()),
         };
@@ -366,17 +356,18 @@ fn parse_region(
             if let Some(start) = current_start.take() {
                 spans.push(start..current_end);
             }
+            spans.push(line_start..line_end);
         } else {
             current_start.get_or_insert(line_start);
             current_end = line_end;
         }
     }
     if let Some(start) = current_start {
-        spans.push(start..current_end.max(region.end));
-    } else if content[region.clone()].ends_with("\n\n") {
-        // Keep a trailing blank editing block after Enter. Without this the
-        // caret lands in an unowned separator gap and vertical navigation has
-        // no raw line on which to paint it.
+        spans.push(start..current_end);
+    }
+    if content[region.clone()].ends_with('\n') {
+        // The line after a trailing newline is the new current editing line.
+        // Keep it as a separate block so Enter commits the block above it.
         spans.push(region.end..region.end);
     }
 
@@ -417,27 +408,6 @@ fn source_lines(content: &str, range: Range<usize>) -> Vec<Range<usize>> {
     result
 }
 
-fn source_lines_for_editing(
-    content: &str,
-    range: Range<usize>,
-    followed_by_block: bool,
-) -> Vec<Range<usize>> {
-    let mut result = Vec::new();
-    let mut offset = range.start;
-    for segment in content[range.clone()].split_inclusive('\n') {
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        result.push(offset..offset + line.len());
-        offset += segment.len();
-    }
-    if !followed_by_block && content[range.clone()].ends_with('\n') {
-        result.push(range.end..range.end);
-    }
-    if result.is_empty() {
-        result.push(range.start..range.start);
-    }
-    result
-}
-
 fn heading_level(line: &str) -> Option<u8> {
     let first = line.trim_start();
     if first.starts_with("### ") {
@@ -453,7 +423,9 @@ fn heading_level(line: &str) -> Option<u8> {
 
 fn classify(raw: &str) -> BlockKind {
     let first = raw.lines().next().unwrap_or("").trim_start();
-    if first.starts_with("```") {
+    if raw.trim().is_empty() {
+        BlockKind::Blank
+    } else if first.starts_with("```") {
         BlockKind::Code
     } else if let Some(level) = heading_level(first) {
         BlockKind::Heading(level)
@@ -744,7 +716,7 @@ mod tests {
     #[test]
     fn enter_resegments_only_active_region() {
         let mut model = DocumentModel::new("one\n\ntwo\n\nthree".into());
-        let last = model.blocks[2].id;
+        let last = model.blocks.last().unwrap().id;
         model.apply_edit(1..1, "\n\n", EditMode::Enter, 1..1, false);
         assert_eq!(model.blocks.last().unwrap().id, last);
         assert_eq!(model.counters.local_reparses, 1);
@@ -753,8 +725,8 @@ mod tests {
     #[test]
     fn boundary_fusion_cannot_absorb_third_block() {
         let mut model = DocumentModel::new("one\n\ntwo\n\n```\nthree".into());
-        let third = model.blocks[2].id;
-        let active = model.blocks[1].range.start;
+        let third = model.blocks.last().unwrap().id;
+        let active = model.blocks[2].range.start;
         model.apply_edit(
             active - 1..active,
             "",
@@ -773,6 +745,14 @@ mod tests {
         assert_eq!(line.source_for_rendered(0), 2);
         assert!(line.spans.iter().any(|span| span.style.strong));
         assert!(line.spans.iter().any(|span| span.style.link));
+    }
+
+    #[test]
+    fn rendered_inline_code_keeps_its_monospace_style() {
+        let model = DocumentModel::new("before `code` after".into());
+        let line = &model.blocks[0].rendered[0];
+        assert_eq!(line.text, "before code after");
+        assert!(line.spans.iter().any(|span| span.style.code));
     }
 
     #[test]
@@ -823,8 +803,8 @@ mod tests {
     #[test]
     fn deleting_one_boundary_fuses_exactly_two_blocks() {
         let mut model = DocumentModel::new("one\n\ntwo\n\nthree".into());
-        let third = model.blocks[2].id;
-        let active = model.blocks[1].range.start;
+        let third = model.blocks.last().unwrap().id;
+        let active = model.blocks[2].range.start;
         model.apply_edit(
             active - 1..active,
             "",
@@ -832,16 +812,16 @@ mod tests {
             active..active,
             false,
         );
-        assert_eq!(model.blocks.len(), 2);
+        assert_eq!(model.blocks.len(), 3);
         assert_eq!(model.raw(0), "one\ntwo");
-        assert_eq!(model.blocks[1].id, third);
+        assert_eq!(model.blocks[2].id, third);
     }
 
     #[test]
     fn local_unmatched_fence_stops_at_hard_outer_boundary() {
         let mut model = DocumentModel::new("one\n\ntwo\n\nthree".into());
-        let third = model.blocks[2].id;
-        let second = model.blocks[1].range.clone();
+        let third = model.blocks.last().unwrap().id;
+        let second = model.blocks[2].range.clone();
         model.apply_edit(
             second.start..second.end,
             "```\nunclosed",
@@ -866,9 +846,10 @@ mod tests {
     fn enter_at_end_owns_the_new_empty_line() {
         let mut model = DocumentModel::new("hello".into());
         model.apply_edit(5..5, "\n", EditMode::Enter, 5..5, false);
-        assert_eq!(model.blocks.len(), 1);
-        assert_eq!(model.blocks[0].raw_lines, vec![0..5, 6..6]);
-        assert_eq!(model.block_at(6), 0);
+        assert_eq!(model.blocks.len(), 2);
+        assert_eq!(model.blocks[0].raw_lines, vec![0..5]);
+        assert_eq!(model.blocks[1].range, 6..6);
+        assert_eq!(model.block_at(6), 1);
     }
 
     #[test]
@@ -876,9 +857,10 @@ mod tests {
         let mut model = DocumentModel::new("hello".into());
         model.apply_edit(5..5, "\n", EditMode::Enter, 5..5, false);
         model.apply_edit(6..6, "\n", EditMode::Enter, 6..6, false);
-        assert_eq!(model.blocks.len(), 2);
-        assert_eq!(model.blocks[1].range, 7..7);
-        assert_eq!(model.block_at(7), 1);
+        assert_eq!(model.blocks.len(), 3);
+        assert_eq!(model.blocks[1].range, 6..6);
+        assert_eq!(model.blocks[2].range, 7..7);
+        assert_eq!(model.block_at(7), 2);
     }
 
     #[test]
@@ -893,14 +875,15 @@ mod tests {
     #[test]
     fn editing_lines_cover_separator_caret_positions() {
         let model = DocumentModel::new("one\n\ntwo".into());
-        assert_eq!(model.editing_lines(0, 4), vec![0..3, 4..4]);
-        assert_eq!(model.editing_lines(1, 5), vec![5..8]);
+        assert_eq!(model.editing_lines(0, 3), vec![0..3]);
+        assert_eq!(model.editing_lines(1, 4), vec![4..4]);
+        assert_eq!(model.editing_lines(2, 5), vec![5..8]);
     }
 
     #[test]
     fn editing_lines_own_the_final_eof_row() {
         let model = DocumentModel::new("one\n".into());
-        assert_eq!(model.editing_lines(0, 4), vec![0..3, 4..4]);
+        assert_eq!(model.editing_lines(1, 4), vec![4..4]);
     }
 
     #[test]
@@ -910,14 +893,17 @@ mod tests {
     }
 
     #[test]
-    fn fixture_blank_separators_do_not_become_blocks() {
+    fn blank_source_rows_become_their_own_blocks() {
         let model = DocumentModel::new(include_str!("../fixtures/sample.md").into());
         assert!(
             model
                 .blocks
                 .iter()
-                .all(|block| !model.raw(model.block_at(block.range.start)).is_empty())
+                .any(|block| block.kind == BlockKind::Blank)
         );
+        assert!(model.blocks.iter().all(|block| {
+            block.kind != BlockKind::Blank || model.raw_line(&block.range).trim().is_empty()
+        }));
     }
 
     #[test]
@@ -936,14 +922,14 @@ mod tests {
         assert_eq!(model.raw(0), "# Hello");
         assert_eq!(model.raw(1), "world");
         assert_eq!(model.blocks[1].range.start, 8);
-        assert_eq!(model.separator_rows_after(0), 0);
     }
 
     #[test]
     fn one_empty_source_line_reserves_one_grid_row() {
         let model = DocumentModel::new("# Hello\n\nworld".into());
-        assert_eq!(model.blocks.len(), 2);
-        assert_eq!(model.separator_rows_after(0), 1);
-        assert_eq!(model.editing_lines(0, 8), vec![0..7, 8..8]);
+        assert_eq!(model.blocks.len(), 3);
+        assert_eq!(model.blocks[1].kind, BlockKind::Blank);
+        assert_eq!(model.blocks[1].range, 8..8);
+        assert_eq!(model.editing_lines(1, 8), vec![8..8]);
     }
 }

@@ -1,15 +1,14 @@
 # Native Markdown
-
 This fixture exercises the supported native editor surface without tables, HTML, math, task lists, or plugins.
 
-## Editing in place
+Inline `monospace` text uses the code background.
 
+## Editing in place
 The document remains rendered until the cursor enters a block. The active block reveals its **raw Markdown** while surrounding blocks remain calm.
 
 - Click a rendered block to activate it.
 - Type ordinary text and punctuation.
 - Save the result with the standard shortcut.
-
 ### Stable rhythm
 
 Every baseline belongs to a twenty-four pixel grid. Larger headings occupy additional rows while preserving the common baseline phase.
@@ -22,7 +21,6 @@ const FIRST_BASELINE: f32 = 48.0;
 ```
 
 ## A short walk
-
 Morning light falls across the desk. A compact editor should open quickly, remain quiet in memory, and keep attention on the document.
 
 The first paragraph contains *gentle emphasis*, the second contains **strong emphasis**, and this sentence contains a [local link](https://example.com).

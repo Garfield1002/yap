@@ -11,7 +11,7 @@ use std::{
 use bulletmd_native_poc::{
     model::{
         BlockId, BlockKind, DocumentModel, EditMode, EditTransaction, InlineStyle, LatencySamples,
-        RenderLine,
+        RenderLine, RenderSpan,
     },
     persistence::{self, AppConfig},
 };
@@ -225,6 +225,7 @@ struct ShapedLine {
     layout: WrappedLine,
     map: Option<Vec<usize>>,
     code: bool,
+    inline_code: Vec<Range<usize>>,
     image: Option<ShapedImage>,
 }
 
@@ -242,8 +243,47 @@ struct ShapeCache {
     raw: Option<Vec<ShapedLine>>,
     rendered: Option<Vec<ShapedLine>>,
     raw_rows: usize,
-    raw_separator_rows: usize,
     rendered_rows: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RenderClass {
+    Blank,
+    Prose,
+    Code,
+}
+
+trait GridWidget {
+    fn block_index(&self) -> usize;
+    fn top_row(&self) -> usize;
+    fn rows(&self) -> usize;
+    fn render_class(&self) -> RenderClass;
+}
+
+#[derive(Clone, Copy)]
+struct BlockWidget {
+    index: usize,
+    top_row: usize,
+    rows: usize,
+    render_class: RenderClass,
+}
+
+impl GridWidget for BlockWidget {
+    fn block_index(&self) -> usize {
+        self.index
+    }
+
+    fn top_row(&self) -> usize {
+        self.top_row
+    }
+
+    fn rows(&self) -> usize {
+        self.rows
+    }
+
+    fn render_class(&self) -> RenderClass {
+        self.render_class
+    }
 }
 
 #[derive(Clone)]
@@ -255,7 +295,6 @@ struct HitLine {
     paint_origin: Point<Pixels>,
     layout: WrappedLine,
     map: Option<Vec<usize>>,
-    separator: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1236,7 +1275,6 @@ impl Editor {
                 if let Some(cache) = self.shapes.get_mut(&id) {
                     cache.raw = None;
                     cache.raw_rows = 0;
-                    cache.raw_separator_rows = 0;
                 }
             }
         } else {
@@ -1303,14 +1341,7 @@ impl Editor {
             s + grapheme_offset(&self.document.content[s..e], col)
         };
         let target_block = self.document.block_at(target);
-        let target_is_separator = target > self.document.blocks[target_block].range.end;
-        if target_is_separator {
-            // Blank source lines are structural whitespace rather than a
-            // semantic block crossing. Both Up and Down must land on the same
-            // zero-column caret stop before entering either neighbour.
-            self.preferred_column = Some(0);
-            target
-        } else if target_block != current_block {
+        if target_block != current_block {
             self.preferred_column = Some(0);
             self.document.blocks[target_block].range.start
         } else {
@@ -1670,7 +1701,7 @@ impl Editor {
                     f32::from(e.position.x),
                     f32::from(e.position.y),
                     hits.len(),
-                    if winner.separator { "blank" } else { "line" },
+                    "line",
                     winner.block,
                     winner.row,
                     winner.source.start,
@@ -1752,7 +1783,6 @@ impl Editor {
             if raw_is_stale {
                 cache.raw = None;
                 cache.raw_rows = 0;
-                cache.raw_separator_rows = 0;
             }
             if revealed.contains(&block.id) && cache.raw.is_none() {
                 let lines = editing_lines
@@ -1769,12 +1799,9 @@ impl Editor {
                     })
                     .collect::<Vec<_>>();
                 cache.raw_rows = rows(&lines);
-                cache.raw_separator_rows =
-                    editing_lines.len().saturating_sub(block.raw_lines.len());
                 cache.raw = Some(lines);
                 self.document.counters.raw_reshapes += 1
             }
-            let _ = i;
         }
     }
 
@@ -1792,30 +1819,42 @@ impl Editor {
             if let Some(cache) = self.shapes.get_mut(&id) {
                 cache.raw = None;
                 cache.raw_rows = 0;
-                cache.raw_separator_rows = 0;
             }
         }
         self.pending_edits.push_back(Instant::now());
     }
-    fn total_rows(&self) -> usize {
+    fn grid_widgets(&self) -> Vec<BlockWidget> {
+        let mut top_row = 0;
         self.document
             .blocks
             .iter()
             .enumerate()
-            .map(|(index, b)| {
-                let c = &self.shapes[&b.id];
-                let separator_rows = self.document.separator_rows_after(index);
-                let semantic_raw_rows = c.raw_rows.saturating_sub(c.raw_separator_rows);
-                semantic_raw_rows.max(c.rendered_rows).max(1) + separator_rows
+            .map(|(index, block)| {
+                let cache = &self.shapes[&block.id];
+                let widget = BlockWidget {
+                    index,
+                    top_row,
+                    rows: cache.raw_rows.max(cache.rendered_rows).max(1),
+                    render_class: match block.kind {
+                        BlockKind::Blank => RenderClass::Blank,
+                        BlockKind::Code => RenderClass::Code,
+                        _ => RenderClass::Prose,
+                    },
+                };
+                top_row += widget.rows;
+                widget
             })
-            .sum()
+            .collect()
+    }
+
+    fn total_rows(&self) -> usize {
+        self.grid_widgets()
+            .last()
+            .map_or(0, |widget| widget.top_row + widget.rows)
     }
 }
 
 fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> usize {
-    if line.separator {
-        return line.source.start;
-    }
     let local = point(
         position.x - line.paint_origin.x,
         position.y - line.paint_origin.y,
@@ -1831,6 +1870,48 @@ fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> usize {
     } else {
         line.source.start + display.min(line.source.len())
     }
+}
+
+fn inline_code_decorations(
+    layout: &WrappedLine,
+    origin: Point<Pixels>,
+    bounds: Bounds<Pixels>,
+    ranges: &[Range<usize>],
+) -> Vec<Bounds<Pixels>> {
+    const HORIZONTAL_PADDING: f32 = 3.;
+    const VERTICAL_PADDING: f32 = 2.;
+    let mut result = Vec::new();
+    for range in ranges {
+        let Some(start) = layout.position_for_index(range.start, px(GRID)) else {
+            continue;
+        };
+        let Some(end) = layout.position_for_index(range.end, px(GRID)) else {
+            continue;
+        };
+        let push = |result: &mut Vec<Bounds<Pixels>>,
+                    y: Pixels,
+                    left: Pixels,
+                    right: Pixels| {
+            let left = (origin.x + left - px(HORIZONTAL_PADDING)).max(bounds.left());
+            let right = (origin.x + right + px(HORIZONTAL_PADDING)).min(bounds.right());
+            if right > left {
+                result.push(Bounds::new(
+                    point(left, origin.y + y - px(VERTICAL_PADDING)),
+                    size(
+                        right - left,
+                        px(GRID + VERTICAL_PADDING * 2. + 2.),
+                    ),
+                ));
+            }
+        };
+        if start.y == end.y {
+            push(&mut result, start.y, start.x, end.x);
+        } else {
+            push(&mut result, start.y, start.x, bounds.size.width);
+            push(&mut result, end.y, px(0.), end.x);
+        }
+    }
+    result
 }
 
 fn vertical_distance(bounds: Bounds<Pixels>, y: Pixels) -> f32 {
@@ -1892,7 +1973,6 @@ fn debug_geometry_signature(bounds: Bounds<Pixels>, prepared: &Prepared) -> u64 
         line.row.hash(&mut hasher);
         line.source.start.hash(&mut hasher);
         line.source.end.hash(&mut hasher);
-        line.separator.hash(&mut hasher);
         hash_bounds(&mut hasher, line.bounds);
         f32::from(line.paint_origin.x).to_bits().hash(&mut hasher);
         f32::from(line.paint_origin.y).to_bits().hash(&mut hasher);
@@ -1916,14 +1996,14 @@ fn log_debug_geometry(signature: u64, prepared: &Prepared) {
             overlaps += 1;
             eprintln!(
                 "DEBUG_OVERLAP layer=line width={width:.2} height={height:.2} a_kind={} a_block={} a_row={} a_source={}..{} a_top={:.2} a_bottom={:.2} b_kind={} b_block={} b_row={} b_source={}..{} b_top={:.2} b_bottom={:.2}",
-                if a.separator { "blank" } else { "line" },
+                "line",
                 a.block,
                 a.row,
                 a.source.start,
                 a.source.end,
                 f32::from(a.bounds.top()),
                 f32::from(a.bounds.bottom()),
-                if b.separator { "blank" } else { "line" },
+                "line",
                 b.block,
                 b.row,
                 b.source.start,
@@ -1964,10 +2044,9 @@ fn log_debug_geometry(signature: u64, prepared: &Prepared) {
         }
     }
     eprintln!(
-        "DEBUG_GEOMETRY signature={signature:016x} blocks={} lines={} blanks={} code_slabs={} overlaps={overlaps}",
+        "DEBUG_GEOMETRY signature={signature:016x} blocks={} lines={} code_slabs={} overlaps={overlaps}",
         prepared.block_boxes.len(),
         prepared.lines.len(),
-        prepared.lines.iter().filter(|line| line.separator).count(),
         prepared.code_slabs.len(),
     );
 }
@@ -2085,13 +2164,8 @@ impl EntityInputHandler for Editor {
         let p = line
             .layout
             .position_for_index(n - line.source.start, px(GRID))?;
-        let caret_top = if line.layout.text.is_empty() {
-            line.bounds.top()
-        } else {
-            line.paint_origin.y + p.y
-        };
         Some(Bounds::new(
-            point(line.paint_origin.x + p.x, caret_top),
+            point(line.paint_origin.x + p.x, line.paint_origin.y + p.y),
             size(px(1.), px(GRID)),
         ))
     }
@@ -2539,6 +2613,7 @@ struct Prepared {
     lines: Vec<HitLine>,
     block_boxes: Vec<(usize, Bounds<Pixels>)>,
     code_slabs: Vec<(usize, Bounds<Pixels>)>,
+    inline_code_boxes: Vec<Bounds<Pixels>>,
     images: Vec<PreparedImage>,
     cursor: Option<PaintQuad>,
     selection: Vec<PaintQuad>,
@@ -2597,25 +2672,26 @@ impl Element for DocumentElement {
             point(visible.left(), visible.top() - visible.size.height),
             point(visible.right(), visible.bottom() + visible.size.height),
         );
-        let mut y = 0usize;
         let mut lines = Vec::new();
         let mut block_boxes = Vec::new();
         let mut code_slabs = Vec::new();
+        let mut inline_code_boxes = Vec::new();
         let mut images = Vec::new();
         let mut cursor = None;
         let mut selections = Vec::new();
         let mut anchor_delta = None;
-        for (bi, b) in e.document.blocks.iter().enumerate() {
+        for widget in e.grid_widgets() {
+            let bi = widget.block_index();
+            let b = &e.document.blocks[bi];
             let c = &e.shapes[&b.id];
             let shown = if e.revealed.contains(&b.id) {
                 c.raw.as_ref().unwrap()
             } else {
                 c.rendered.as_ref().unwrap()
             };
-            let semantic_raw_rows = c.raw_rows.saturating_sub(c.raw_separator_rows);
-            let block_rows = semantic_raw_rows.max(c.rendered_rows).max(1);
-            let separator_rows = e.document.separator_rows_after(bi);
-            let block_top = bounds.top() + px(FIRST_BASELINE + y as f32 * GRID - GRID);
+            let block_rows = widget.rows();
+            let block_top =
+                bounds.top() + px(FIRST_BASELINE + widget.top_row() as f32 * GRID - GRID);
             let block_bottom = block_top + px(block_rows as f32 * GRID);
             let active = e.revealed.contains(&b.id);
             if let Some((source, screen_y)) = e.pending_anchor
@@ -2631,7 +2707,7 @@ impl Element for DocumentElement {
                         point(bounds.left() + px(INSET + WRAP_WIDTH), block_bottom),
                     ),
                 ));
-                if b.kind == BlockKind::Code {
+                if widget.render_class() == RenderClass::Code {
                     code_slabs.push((
                         bi,
                         Bounds::from_corners(
@@ -2646,7 +2722,8 @@ impl Element for DocumentElement {
                         row = row.max(block_rows);
                     }
                     let n = line_rows(line);
-                    let baseline = bounds.top() + px(FIRST_BASELINE + (y + row) as f32 * GRID);
+                    let baseline =
+                        bounds.top() + px(FIRST_BASELINE + (widget.top_row() + row) as f32 * GRID);
                     let pad = (px(GRID) - line.layout.ascent() - line.layout.descent()) / 2.;
                     let paint_top = baseline - pad - line.layout.ascent();
                     let cell_top = block_top + px(row as f32 * GRID);
@@ -2702,6 +2779,12 @@ impl Element for DocumentElement {
                         });
                     }
                     let paint_origin = point(lb.left(), paint_top);
+                    inline_code_boxes.extend(inline_code_decorations(
+                        &line.layout,
+                        paint_origin,
+                        lb,
+                        &line.inline_code,
+                    ));
                     let hit = HitLine {
                         block: bi,
                         row,
@@ -2710,7 +2793,6 @@ impl Element for DocumentElement {
                         paint_origin,
                         layout: line.layout.clone(),
                         map: line.map.clone(),
-                        separator: false,
                     };
                     if active && line.map.is_none() {
                         let pos = e
@@ -2722,14 +2804,9 @@ impl Element for DocumentElement {
                             && e.selection.is_empty()
                         {
                             if let Some(p) = line.layout.position_for_index(pos, px(GRID)) {
-                                let caret_top = if line.layout.text.is_empty() {
-                                    lb.top()
-                                } else {
-                                    paint_origin.y + p.y
-                                };
                                 cursor = Some(fill(
                                     Bounds::new(
-                                        point(paint_origin.x + p.x, caret_top),
+                                        point(paint_origin.x + p.x, paint_origin.y + p.y),
                                         size(px(1.5), px(GRID)),
                                     ),
                                     colors.accent,
@@ -2763,45 +2840,13 @@ impl Element for DocumentElement {
                     lines.push(hit);
                     row += n;
                 }
-
-                // Blank rows between semantic blocks are source positions too.
-                // They used to exist only in the vertical row count, leaving no
-                // hit target for the mouse and making clicks fall back to the
-                // nearest non-empty line.
-                let included_separator_rows = if active { c.raw_separator_rows } else { 0 };
-                if separator_rows > included_separator_rows {
-                    let metric_line = shown.last().expect("every block has a shaped line");
-                    let pad =
-                        (px(GRID) - metric_line.layout.ascent() - metric_line.layout.descent())
-                            / 2.;
-                    for separator in included_separator_rows..separator_rows {
-                        let baseline = bounds.top()
-                            + px(FIRST_BASELINE + (y + block_rows + separator) as f32 * GRID);
-                        let top = baseline - pad - metric_line.layout.ascent();
-                        let cell_top = block_top + px((block_rows + separator) as f32 * GRID);
-                        let source = (b.range.end + 1 + separator).min(e.document.content.len());
-                        lines.push(HitLine {
-                            block: bi,
-                            row: block_rows + separator,
-                            source: source..source,
-                            bounds: Bounds::new(
-                                point(bounds.left() + px(INSET), cell_top),
-                                size(px(WRAP_WIDTH), px(GRID)),
-                            ),
-                            paint_origin: point(bounds.left() + px(INSET), top),
-                            layout: metric_line.layout.clone(),
-                            map: None,
-                            separator: true,
-                        });
-                    }
-                }
             }
-            y += block_rows + separator_rows;
         }
         Prepared {
             lines,
             block_boxes,
             code_slabs,
+            inline_code_boxes,
             images,
             cursor,
             selection: selections,
@@ -2882,10 +2927,10 @@ impl Element for DocumentElement {
         for q in p.selection.drain(..) {
             window.paint_quad(q)
         }
+        for slab in &p.inline_code_boxes {
+            window.paint_quad(fill(*slab, colors.code_bg).corner_radii(px(4.)));
+        }
         for l in &p.lines {
-            if l.separator {
-                continue;
-            }
             let _ = l.layout.paint(
                 l.paint_origin,
                 px(GRID),
@@ -2961,12 +3006,7 @@ impl Element for DocumentElement {
                 }
             }
             for line in &p.lines {
-                let debug_color = if line.separator {
-                    color(0xfb8500)
-                } else {
-                    color(0xbf3989)
-                };
-                paint_outline(window, line.bounds, alpha(debug_color, 0.8));
+                paint_outline(window, line.bounds, alpha(color(0xbf3989), 0.8));
             }
         }
         let applied_anchor = p.anchor_delta.is_some();
@@ -3064,6 +3104,11 @@ fn shape_raw(
         layout,
         map: None,
         code: code_block,
+        inline_code: if code_block {
+            Vec::new()
+        } else {
+            inline_code_ranges(text)
+        },
         image: None,
     }
 }
@@ -3073,6 +3118,10 @@ enum RawRole {
     Text,
     Mark,
     InlineCode,
+}
+
+fn inline_code_background(is_code: bool, palette: Palette) -> Option<Hsla> {
+    is_code.then_some(palette.code_bg)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3166,7 +3215,10 @@ fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
                 len,
                 font: face,
                 color,
-                background_color: (style.role == RawRole::InlineCode).then_some(palette.code_bg),
+                background_color: inline_code_background(
+                    style.role == RawRole::InlineCode,
+                    palette,
+                ),
                 underline: style.inline.link.then_some(UnderlineStyle {
                     thickness: px(1.),
                     color: Some(alpha(color, 0.4)),
@@ -3176,6 +3228,38 @@ fn raw_text_runs(text: &str, palette: Palette) -> Vec<TextRun> {
             }
         })
         .collect()
+}
+
+fn inline_code_ranges(text: &str) -> Vec<Range<usize>> {
+    Parser::new(text)
+        .into_offset_iter()
+        .filter_map(|(event, range)| match event {
+            Event::Code(_) => Some(
+                range.start.saturating_add(1)..range.end.saturating_sub(1),
+            ),
+            _ => None,
+        })
+        .filter(|range| range.start <= range.end)
+        .collect()
+}
+
+fn inline_code_ranges_from_spans(spans: &[RenderSpan]) -> Vec<Range<usize>> {
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    let mut offset = 0;
+    for span in spans {
+        let end = offset + span.len;
+        if span.style.code {
+            if let Some(previous) = ranges.last_mut()
+                && previous.end == offset
+            {
+                previous.end = end;
+            } else {
+                ranges.push(offset..end);
+            }
+        }
+        offset = end;
+    }
+    ranges
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3384,7 +3468,7 @@ fn shape_render(
                     len: s.len,
                     font: f,
                     color,
-                    background_color: s.style.code.then_some(palette.code_bg),
+                    background_color: inline_code_background(s.style.code, palette),
                     underline: s.style.link.then_some(UnderlineStyle {
                         thickness: px(1.),
                         color: Some(alpha(color, 0.4)),
@@ -3415,6 +3499,11 @@ fn shape_render(
         layout,
         map: Some(line.source_map.clone()),
         code: line.code_block,
+        inline_code: if line.code_block {
+            Vec::new()
+        } else {
+            inline_code_ranges_from_spans(&line.spans)
+        },
         image: line.image.as_ref().map(|image| ShapedImage {
             alt: image.alt.clone(),
             resource: image_resource(&image.src, document_path),
@@ -3526,7 +3615,7 @@ mod ui_tests {
     use super::*;
 
     #[test]
-    fn separator_borrowed_by_code_block_keeps_prose_styling() {
+    fn code_block_does_not_style_following_rows_as_code() {
         assert!(source_line_is_code(BlockKind::Code, 20, 20));
         assert!(!source_line_is_code(BlockKind::Code, 20, 21));
         assert!(!source_line_is_code(BlockKind::Paragraph, 20, 10));
