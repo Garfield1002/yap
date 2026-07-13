@@ -256,6 +256,8 @@ pub struct Editor {
     save: SaveState,
     config: AppConfig,
     open_menu: Option<OpenMenu>,
+    /// Whether the File menu's "Open Recent" submenu is expanded.
+    recent_submenu_open: bool,
 }
 
 impl Editor {
@@ -294,6 +296,7 @@ impl Editor {
             },
             config,
             open_menu: None,
+            recent_submenu_open: false,
         }
     }
 

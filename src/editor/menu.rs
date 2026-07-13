@@ -11,6 +11,7 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         self.open_menu = None;
+        self.recent_submenu_open = false;
         window.focus(&self.focus);
         match command {
             MenuCommand::New => self.new_document_with_prompt(window, cx),
@@ -129,6 +130,70 @@ impl Editor {
             .child(label)
     }
 
+    /// The "Open Recent ›" row and, when expanded, the side submenu listing the
+    /// ten most recent files.
+    fn open_recent_item(
+        recent: Vec<String>,
+        expanded: bool,
+        colors: Palette,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let items = recent
+            .into_iter()
+            .take(10)
+            .enumerate()
+            .map(|(index, path)| Self::recent_menu_item(index, &path, colors, cx).into_any_element())
+            .collect::<Vec<_>>();
+        let has_recent = !items.is_empty();
+        let expanded = expanded && has_recent;
+        div()
+            .relative()
+            .child(
+                div()
+                    .id("menu-open-recent")
+                    .h(px(28.))
+                    .px(px(10.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_size(px(12.8))
+                    .text_color(if has_recent { colors.fg } else { colors.fg_dim })
+                    .when(has_recent, |row| {
+                        row.cursor_pointer()
+                            .hover(move |style| style.bg(alpha(colors.fg, 0.1)))
+                    })
+                    .when(expanded, |row| row.bg(alpha(colors.fg, 0.1)))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.recent_submenu_open = !this.recent_submenu_open;
+                        cx.notify();
+                    }))
+                    .child("Open Recent")
+                    .child(div().text_color(colors.fg_dim).child("›")),
+            )
+            .when(expanded, |slot| {
+                slot.child(
+                    deferred(
+                        div()
+                            .absolute()
+                            .top(px(-4.))
+                            .left(px(214.))
+                            .w(px(214.))
+                            .py(px(4.))
+                            .bg(colors.bg)
+                            .border_1()
+                            .border_color(colors.border)
+                            .rounded(px(4.))
+                            .shadow_lg()
+                            .occlude()
+                            .flex()
+                            .flex_col()
+                            .children(items),
+                    )
+                    .with_priority(11),
+                )
+            })
+    }
+
     fn theme_menu_item(
         id: &'static str,
         label: &'static str,
@@ -194,15 +259,10 @@ impl Editor {
         selected_theme: ThemePreference,
         dot_opacity: f32,
         recent: Vec<String>,
+        recent_expanded: bool,
         colors: Palette,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let recent_items = recent
-            .into_iter()
-            .take(12)
-            .enumerate()
-            .map(|(index, path)| Self::recent_menu_item(index, &path, colors, cx).into_any_element())
-            .collect::<Vec<_>>();
         let dot_items = [0, 6, 12, 18, 24, 30]
             .into_iter()
             .map(|percent| {
@@ -254,7 +314,7 @@ impl Editor {
                     colors,
                     cx,
                 ))
-                .children(recent_items)
+                .child(Self::open_recent_item(recent, recent_expanded, colors, cx))
                 .child(Self::menu_separator(colors))
                 .child(Self::menu_item(
                     "menu-save",

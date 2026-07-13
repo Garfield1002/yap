@@ -37,6 +37,7 @@ impl Render for Editor {
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
                     if this.open_menu.take().is_some() {
+                        this.recent_submenu_open = false;
                         cx.notify();
                     }
                 }),
@@ -132,6 +133,7 @@ impl Render for Editor {
                                                     } else {
                                                         Some(OpenMenu::File)
                                                     };
+                                                this.recent_submenu_open = false;
                                                 cx.notify();
                                             }))
                                             .child("File"),
@@ -143,6 +145,7 @@ impl Render for Editor {
                                                 self.theming.theme,
                                                 self.theming.dot_opacity,
                                                 self.config.recent.clone(),
+                                                self.recent_submenu_open,
                                                 colors,
                                                 cx,
                                             ))
@@ -174,6 +177,7 @@ impl Render for Editor {
                                                     } else {
                                                         Some(OpenMenu::Edit)
                                                     };
+                                                this.recent_submenu_open = false;
                                                 cx.notify();
                                             }))
                                             .child("Edit"),
@@ -185,6 +189,7 @@ impl Render for Editor {
                                                 self.theming.theme,
                                                 self.theming.dot_opacity,
                                                 self.config.recent.clone(),
+                                                self.recent_submenu_open,
                                                 colors,
                                                 cx,
                                             ))
@@ -216,6 +221,7 @@ impl Render for Editor {
                                                     } else {
                                                         Some(OpenMenu::Settings)
                                                     };
+                                                this.recent_submenu_open = false;
                                                 cx.notify();
                                             }))
                                             .child("Settings"),
@@ -227,6 +233,7 @@ impl Render for Editor {
                                                 self.theming.theme,
                                                 self.theming.dot_opacity,
                                                 self.config.recent.clone(),
+                                                self.recent_submenu_open,
                                                 colors,
                                                 cx,
                                             ))
