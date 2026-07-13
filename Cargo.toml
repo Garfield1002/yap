@@ -11,8 +11,15 @@ notify = "8"
 pulldown-cmark = "0.13"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+spellbook = { version = "0.4.2", optional = true }
 tempfile = "3"
 unicode-segmentation = "1.12"
+
+[features]
+# Optional, feature-gated "plugins". Each gates its dependencies and code so a
+# default build carries none of the cost. See src/spellcheck.rs.
+default = []
+spellcheck = ["dep:spellbook"]
 
 [profile.release]
 lto = "thin"

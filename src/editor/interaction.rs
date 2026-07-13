@@ -116,6 +116,10 @@ impl Editor {
 
     pub(crate) fn mouse_down(&mut self, e: &MouseDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         w.focus(&self.focus);
+        #[cfg(feature = "spellcheck")]
+        if self.spell_menu.take().is_some() {
+            cx.notify();
+        }
         if !e.modifiers.shift
             && let Some(mark) = self.task_box_at(e.position)
         {
@@ -137,6 +141,57 @@ impl Editor {
     }
     pub(crate) const fn mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
         self.sel.selecting = false;
+    }
+}
+
+// Spell-check context menu (feature: `spellcheck`). Right-clicking a misspelled
+// word opens a floating menu of corrections; picking one replaces the word.
+#[cfg(feature = "spellcheck")]
+impl Editor {
+    pub(crate) fn spell_context_menu(
+        &mut self,
+        e: &MouseDownEvent,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        w.focus(&self.focus);
+        if !self.spell_enabled {
+            return;
+        }
+        let offset = self.index_at(e.position);
+        self.spell_menu = self.spell.as_ref().and_then(|spell| {
+            let word = spell.misspelling_at(offset)?;
+            let suggestions = spell.suggest(&self.document.content[word.clone()]);
+            Some(SpellMenu {
+                position: e.position,
+                word,
+                suggestions,
+            })
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn apply_suggestion(
+        &mut self,
+        word: Range<usize>,
+        replacement: &str,
+        cx: &mut Context<Self>,
+    ) {
+        self.spell_menu = None;
+        self.edit(word.clone(), replacement, EditMode::Ordinary, true, cx);
+        let caret = word.start + replacement.len();
+        self.sel.range = caret..caret;
+        self.sync_revealed();
+        cx.notify();
+    }
+
+    pub(crate) fn ignore_spelling(&mut self, word: Range<usize>, cx: &mut Context<Self>) {
+        let text = self.document.content[word].to_string();
+        if let Some(spell) = self.spell.as_mut() {
+            spell.ignore(&text);
+        }
+        self.spell_menu = None;
+        cx.notify();
     }
 }
 

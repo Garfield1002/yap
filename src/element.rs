@@ -16,6 +16,8 @@ use gpui::{
     Pixels, Point, RenderImage, SharedString, Style, TextAlign, TextRun, Window, WrappedLine,
     fill, font, point, px, size,
 };
+#[cfg(feature = "spellcheck")]
+use gpui::UnderlineStyle;
 
 /// Width of the selection stub drawn for a selected trailing newline, so an
 /// empty selected line (or a line break) shows something instead of collapsing
@@ -90,6 +92,51 @@ pub(crate) fn source_offset_for_hit(line: &HitLine, position: Point<Pixels>) -> 
                 .unwrap_or(line.source.start)
         },
     )
+}
+
+/// The pixel span and vertical offset of the portion of source range `word`
+/// that falls on `line`, for painting a spell-check underline. Returns the left
+/// and right x (already in absolute coordinates) plus the wrapped-row y offset
+/// within the line. `None` if the word does not resolve to positions on a single
+/// visual row of this line.
+#[cfg(feature = "spellcheck")]
+fn spell_underline_span(line: &HitLine, word: &Range<usize>) -> Option<(Pixels, Pixels, Pixels)> {
+    // Raw (revealed) lines carry a real `source` range and no map; rendered
+    // lines carry `source = 0..0` and map every rendered byte to its absolute
+    // source offset, so their covered source range comes from the map itself.
+    let (display_start, display_end) = match &line.map {
+        None => {
+            let start = word.start.max(line.source.start);
+            let end = word.end.min(line.source.end);
+            if end <= start {
+                return None;
+            }
+            (start - line.source.start, end - line.source.start)
+        }
+        Some(map) => {
+            let src_start = *map.first()?;
+            let src_end = *map.last()?;
+            if word.end <= src_start || word.start >= src_end {
+                return None;
+            }
+            // The map is sticky at span boundaries: the entry for the first
+            // rendered byte of a styled run keeps the *previous* run's source
+            // offset (see `append_mapped` in model.rs). So the start uses a floor
+            // lookup — the last rendered byte whose source offset is still at or
+            // before the word — while the end uses the first byte at or past it.
+            (
+                map.iter().rposition(|&o| o <= word.start).unwrap_or(0),
+                map.iter().position(|&o| o >= word.end).unwrap_or(map.len()),
+            )
+        }
+    };
+    let a = line.layout.position_for_index(display_start, px(GRID))?;
+    let z = line.layout.position_for_index(display_end, px(GRID))?;
+    // Skip words that wrap across visual rows — a rare edge in this POC.
+    if a.y != z.y || z.x <= a.x {
+        return None;
+    }
+    Some((line.paint_origin.x + a.x, line.paint_origin.x + z.x, a.y))
 }
 
 /// Byte offsets of the blank region reserved for the checkbox within a task
@@ -551,6 +598,26 @@ impl Element for DocumentElement {
                 window,
                 cx,
             );
+        }
+        #[cfg(feature = "spellcheck")]
+        {
+            let misspellings = self.editor.read(cx).misspellings().to_vec();
+            if !misspellings.is_empty() {
+                let style = UnderlineStyle {
+                    thickness: px(1.),
+                    color: Some(color(0xcf222e)),
+                    wavy: true,
+                };
+                for line in &p.lines {
+                    let ascent = line.layout.ascent();
+                    for word in &misspellings {
+                        if let Some((left, right, row_y)) = spell_underline_span(line, word) {
+                            let origin = point(left, line.paint_origin.y + row_y + ascent + px(1.));
+                            window.paint_underline(origin, right - left, &style);
+                        }
+                    }
+                }
+            }
         }
         for (hitbox, checked) in &p.checkboxes {
             let outer = hitbox.bounds;

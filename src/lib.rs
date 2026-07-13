@@ -4,4 +4,6 @@ pub mod layout;
 pub mod model;
 pub mod persistence;
 pub mod shaping;
+#[cfg(feature = "spellcheck")]
+pub mod spellcheck;
 pub mod theme;

@@ -47,6 +47,8 @@ impl Editor {
         for id in replaced {
             self.layout.shapes.remove(id);
         }
+        #[cfg(feature = "spellcheck")]
+        self.mark_spell_dirty();
     }
 
     pub(crate) fn move_to(&mut self, at: usize, cx: &mut Context<Self>) {
@@ -133,6 +135,8 @@ impl Editor {
         self.sync_revealed();
         self.status = "unsaved".into();
         self.save.dirty = true;
+        #[cfg(feature = "spellcheck")]
+        self.mark_spell_dirty();
         self.schedule_autosave(cx);
         cx.notify();
     }

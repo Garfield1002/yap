@@ -117,6 +117,16 @@ pub enum OpenMenu {
     Settings,
 }
 
+/// The spell-check suggestion context menu: where it was opened, which source
+/// word range it targets, and the offered corrections. Set on right-click over
+/// a misspelled word (see `interaction.rs`), rendered as a floating overlay.
+#[cfg(feature = "spellcheck")]
+pub(crate) struct SpellMenu {
+    pub(crate) position: Point<Pixels>,
+    pub(crate) word: Range<usize>,
+    pub(crate) suggestions: Vec<String>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThemePreference {
     System,
@@ -270,6 +280,18 @@ pub struct Editor {
     /// quick succession apply progressively more steps, so holding Ctrl+Z races
     /// through history instead of crawling one step per keypress.
     pub(crate) history_repeat: Option<(std::time::Instant, isize, u32)>,
+    /// The spell checker, when the `spellcheck` feature is built and the bundled
+    /// dictionary loaded. `None` disables the plugin without any other branch
+    /// needing to care.
+    #[cfg(feature = "spellcheck")]
+    pub(crate) spell: Option<crate::spellcheck::SpellChecker>,
+    /// The open spell-suggestion context menu, if any.
+    #[cfg(feature = "spellcheck")]
+    pub(crate) spell_menu: Option<SpellMenu>,
+    /// Whether spell checking is currently on. Toggled from the status bar; when
+    /// off, no words are underlined and the context menu is suppressed.
+    #[cfg(feature = "spellcheck")]
+    pub(crate) spell_enabled: bool,
 }
 
 impl Editor {
@@ -310,7 +332,42 @@ impl Editor {
             open_menu: None,
             recent_submenu_open: false,
             history_repeat: None,
+            #[cfg(feature = "spellcheck")]
+            spell: crate::spellcheck::SpellChecker::new(),
+            #[cfg(feature = "spellcheck")]
+            spell_menu: None,
+            #[cfg(feature = "spellcheck")]
+            spell_enabled: true,
         }
+    }
+
+    /// Toggles spell checking on or off (from the status-bar indicator).
+    #[cfg(feature = "spellcheck")]
+    pub(crate) fn toggle_spell(&mut self, cx: &mut Context<Self>) {
+        self.spell_enabled = !self.spell_enabled;
+        self.spell_menu = None;
+        cx.notify();
+    }
+
+    /// Marks the spell checker's cached results stale after a document change,
+    /// so `ensure_shapes` rescans before the next paint. No-op without the
+    /// `spellcheck` feature.
+    #[cfg(feature = "spellcheck")]
+    pub(crate) fn mark_spell_dirty(&mut self) {
+        if let Some(spell) = self.spell.as_mut() {
+            spell.dirty = true;
+        }
+        self.spell_menu = None;
+    }
+
+    /// The misspelled word ranges to underline, or empty when the plugin is
+    /// disabled. Read by `element.rs` during paint.
+    #[cfg(feature = "spellcheck")]
+    pub(crate) fn misspellings(&self) -> &[Range<usize>] {
+        if !self.spell_enabled {
+            return &[];
+        }
+        self.spell.as_ref().map_or(&[], |spell| spell.misspellings())
     }
 
     /// The focus handle, for the window to focus the editor on open.

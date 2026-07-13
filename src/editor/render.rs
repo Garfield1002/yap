@@ -8,6 +8,171 @@ impl Focusable for Editor {
     }
 }
 
+// Spell-check overlay wiring (feature: `spellcheck`). These decorate the render
+// tree with the right-click handler and the floating suggestion menu. Kept as
+// element-wrapping helpers with a no-op stub below so the render chain reads the
+// same whether or not the feature is built.
+#[cfg(feature = "spellcheck")]
+impl Editor {
+    /// Adds the right-click handler that opens the suggestion menu over a
+    /// misspelled word to the document surface element.
+    fn with_spell_right_click<E: InteractiveElement + 'static>(
+        &self,
+        el: E,
+        cx: &mut Context<Self>,
+    ) -> E {
+        el.on_mouse_down(MouseButton::Right, cx.listener(Self::spell_context_menu))
+    }
+
+    fn spell_menu_item(
+        id: usize,
+        label: String,
+        colors: Palette,
+        on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id(("spell-item", id))
+            .h(px(26.))
+            .px(px(10.))
+            .flex()
+            .items_center()
+            .text_size(px(12.8))
+            .text_color(colors.fg)
+            .cursor_pointer()
+            .hover(move |style| style.bg(alpha(colors.fg, 0.1)))
+            .on_click(cx.listener(move |this, _, _, cx| on_click(this, cx)))
+            .child(label)
+    }
+
+    /// Appends the clickable `spell:en_US` / `spell:off` indicator to the status
+    /// bar, when the dictionary loaded. Clicking it toggles spell checking.
+    fn with_spell_status<E: ParentElement + 'static>(
+        &self,
+        el: E,
+        colors: Palette,
+        cx: &mut Context<Self>,
+    ) -> E {
+        if self.spell.is_none() {
+            return el;
+        }
+        let label = if self.spell_enabled {
+            "spell:en_US"
+        } else {
+            "spell:off"
+        };
+        el.child(
+            div()
+                .id("spell-toggle")
+                .ml(px(14.))
+                .cursor_pointer()
+                .hover(move |style| style.text_color(colors.fg))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_spell(cx)))
+                .child(label),
+        )
+    }
+
+    /// Appends the floating suggestion menu, if one is open, as a deferred
+    /// overlay anchored at the click position.
+    fn with_spell_menu<E: ParentElement + 'static>(
+        &self,
+        el: E,
+        colors: Palette,
+        cx: &mut Context<Self>,
+    ) -> E {
+        let Some(menu) = self.spell_menu.as_ref() else {
+            return el;
+        };
+        let word = menu.word.clone();
+        let mut items: Vec<gpui::AnyElement> = Vec::new();
+        if menu.suggestions.is_empty() {
+            items.push(
+                div()
+                    .h(px(26.))
+                    .px(px(10.))
+                    .flex()
+                    .items_center()
+                    .text_size(px(12.8))
+                    .text_color(colors.fg_dim)
+                    .child("No suggestions")
+                    .into_any_element(),
+            );
+        } else {
+            for (i, suggestion) in menu.suggestions.iter().enumerate() {
+                let target = word.clone();
+                let replacement = suggestion.clone();
+                items.push(
+                    Self::spell_menu_item(
+                        i,
+                        suggestion.clone(),
+                        colors,
+                        move |this, cx| this.apply_suggestion(target.clone(), &replacement, cx),
+                        cx,
+                    )
+                    .into_any_element(),
+                );
+            }
+        }
+        items.push(
+            div()
+                .h(px(9.))
+                .mx(px(7.))
+                .border_b_1()
+                .border_color(colors.border)
+                .into_any_element(),
+        );
+        let target = word;
+        items.push(
+            Self::spell_menu_item(
+                usize::MAX,
+                "Ignore".into(),
+                colors,
+                move |this, cx| this.ignore_spelling(target.clone(), cx),
+                cx,
+            )
+            .into_any_element(),
+        );
+        el.child(
+            deferred(
+                div()
+                    .absolute()
+                    .left(menu.position.x)
+                    .top(menu.position.y)
+                    .w(px(200.))
+                    .py(px(4.))
+                    .bg(colors.bg)
+                    .border_1()
+                    .border_color(colors.border)
+                    .rounded(px(4.))
+                    .shadow_lg()
+                    .occlude()
+                    .flex()
+                    .flex_col()
+                    .children(items),
+            )
+            .with_priority(30),
+        )
+    }
+}
+
+#[cfg(not(feature = "spellcheck"))]
+impl Editor {
+    #[allow(clippy::unused_self)]
+    const fn with_spell_right_click<E>(&self, el: E, _cx: &mut Context<Self>) -> E {
+        el
+    }
+
+    #[allow(clippy::unused_self)]
+    const fn with_spell_menu<E>(&self, el: E, _colors: Palette, _cx: &mut Context<Self>) -> E {
+        el
+    }
+
+    #[allow(clippy::unused_self)]
+    const fn with_spell_status<E>(&self, el: E, _colors: Palette, _cx: &mut Context<Self>) -> E {
+        el
+    }
+}
+
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dark = self.theming.theme.dark(window.appearance());
@@ -22,7 +187,8 @@ impl Render for Editor {
             .path
             .as_deref()
             .and_then(Path::file_name).map_or_else(|| "untitled.md".into(), |name| name.to_string_lossy().into_owned());
-        div()
+        self.with_spell_menu(
+            div()
             .size_full()
             .font(font(PROSE_FONT))
             .text_color(colors.fg)
@@ -325,7 +491,7 @@ impl Render for Editor {
                             .w_full()
                             .overflow_x_scroll()
                             .track_scroll(&self.horizontal_scroll)
-                            .child(
+                            .child(self.with_spell_right_click(
                                 div()
                                     .flex_none()
                                     .w(px(DOCUMENT_WIDTH))
@@ -349,10 +515,11 @@ impl Render for Editor {
                                     .child(DocumentElement {
                                         editor: cx.entity(),
                                     }),
-                            ),
+                                cx,
+                            )),
                     ),
             )
-            .child(
+            .child(self.with_spell_status(
                 div()
                     .h(px(25.))
                     .flex_none()
@@ -366,7 +533,9 @@ impl Render for Editor {
                     .text_color(colors.fg_dim)
                     .child(div().flex_1().text_color(colors.fg).child(filename))
                     .child(self.status.clone()),
-            )
+                colors,
+                cx,
+            ))
             .when(self.save.conflict_text.is_some(), |root| {
                 root.child(
                     deferred(
@@ -422,6 +591,9 @@ impl Render for Editor {
                     )
                     .with_priority(20),
                 )
-            })
+            }),
+            colors,
+            cx,
+        )
     }
 }

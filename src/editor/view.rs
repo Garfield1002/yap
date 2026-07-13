@@ -4,6 +4,15 @@ use super::*;
 
 impl Editor {
     pub(crate) fn ensure_shapes(&mut self, window: &mut Window, cx: &mut App) {
+        // Refresh spell-check results before painting if the document changed.
+        // Direct field access keeps the borrows of `spell` and `document`
+        // disjoint. No-op without the `spellcheck` feature.
+        #[cfg(feature = "spellcheck")]
+        if let Some(spell) = self.spell.as_mut()
+            && spell.dirty
+        {
+            spell.rescan(&self.document);
+        }
         let revealed = self.layout.revealed.clone();
         let caret = self.cursor();
         let palette = palette(self.theming.dark);

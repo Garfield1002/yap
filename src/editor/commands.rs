@@ -22,6 +22,8 @@ impl Editor {
         self.save.watcher = None;
         self.save.conflict_text = None;
         self.status = "saved".into();
+        #[cfg(feature = "spellcheck")]
+        self.mark_spell_dirty();
         cx.notify();
     }
 
@@ -304,6 +306,8 @@ impl Editor {
                             editor.history.undo.clear();
                             editor.history.redo.clear();
                             editor.status = "reloaded from disk".into();
+                            #[cfg(feature = "spellcheck")]
+                            editor.mark_spell_dirty();
                         }
                         cx.notify();
                         true

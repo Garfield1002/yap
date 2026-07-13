@@ -3,7 +3,7 @@ _default:
 
 # Open FILE in the native POC. With no FILE, it starts an untitled document.
 run FILE="":
-    cargo run --release {{ if FILE != "" { "-- " + FILE } else { "" } }}
+    cargo run --release --all-features {{ if FILE != "" { "-- " + FILE } else { "" } }}
 
 # Compile the debug binary.
 build:
