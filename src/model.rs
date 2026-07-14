@@ -579,6 +579,22 @@ fn heading_level(line: &str) -> Option<u8> {
     }
 }
 
+/// Rows of empty vertical space to insert between two adjacent blocks.
+///
+/// Derived purely from block kind so heading rhythm is independent of incidental
+/// blank source lines. A heading gets one row of breathing room on each side;
+/// that row collapses against a blank source line (which already occupies a row)
+/// and against another heading's own margin, and there is none at the document
+/// top.
+#[must_use]
+pub fn block_gap(prev: Option<BlockKind>, cur: BlockKind) -> usize {
+    let Some(prev) = prev else { return 0 };
+    let touches_blank = prev == BlockKind::Blank || cur == BlockKind::Blank;
+    let touches_heading =
+        matches!(prev, BlockKind::Heading(_)) || matches!(cur, BlockKind::Heading(_));
+    usize::from(touches_heading && !touches_blank)
+}
+
 fn classify(raw: &str) -> BlockKind {
     let first = raw.lines().next().unwrap_or("").trim_start();
     if raw.trim().is_empty() {
@@ -1449,5 +1465,30 @@ mod tests {
         let done = lines.iter().find(|l| l.text.contains("done")).unwrap();
         assert_eq!(done.task.as_ref().map(|t| t.checked), Some(true));
         assert!(done.text.starts_with(" - "));
+    }
+
+    #[test]
+    fn heading_reserves_a_margin_row_against_neighbours() {
+        // One row above a heading that follows another block, and one below a
+        // heading that precedes one, regardless of source blank lines.
+        assert_eq!(block_gap(Some(BlockKind::List), BlockKind::Heading(3)), 1);
+        assert_eq!(block_gap(Some(BlockKind::Heading(2)), BlockKind::Paragraph), 1);
+        // Two adjacent headings collapse to a single row between them.
+        assert_eq!(block_gap(Some(BlockKind::Heading(1)), BlockKind::Heading(2)), 1);
+    }
+
+    #[test]
+    fn blank_source_line_supplies_the_heading_margin() {
+        // A blank block already occupies its own row, so no extra margin is
+        // synthesised on the side it sits — the gap stays one row either way.
+        assert_eq!(block_gap(Some(BlockKind::Blank), BlockKind::Heading(1)), 0);
+        assert_eq!(block_gap(Some(BlockKind::Heading(1)), BlockKind::Blank), 0);
+    }
+
+    #[test]
+    fn non_heading_blocks_and_document_top_get_no_margin() {
+        assert_eq!(block_gap(None, BlockKind::Heading(1)), 0);
+        assert_eq!(block_gap(None, BlockKind::Paragraph), 0);
+        assert_eq!(block_gap(Some(BlockKind::Paragraph), BlockKind::List), 0);
     }
 }

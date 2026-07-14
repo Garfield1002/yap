@@ -599,6 +599,16 @@ pub fn shape_render(
         .unwrap()
         .remove(0);
     let (ascent, descent) = line_metrics(&line.text, &layout, default_metrics);
+    // A heading is laid out one grid row tall and relies on `block_gap`
+    // reserving an empty margin row on each side to absorb the glyph's overflow
+    // (see `line_rows`). That only holds while the glyph is at most three grid
+    // rows tall — its own row plus one row of overflow into each margin. Guard
+    // the coupling so a future bump to the heading sizes above can't silently
+    // collide with the neighbouring blocks.
+    debug_assert!(
+        line.level == 0 || ascent + descent <= px(GRID * 3.),
+        "heading glyph height exceeds the reserved margin budget"
+    );
     ShapedLine {
         source: 0..0,
         layout,
@@ -629,15 +639,16 @@ pub fn rows(lines: &[ShapedLine]) -> usize {
     lines.iter().map(line_rows).sum()
 }
 
-#[must_use] 
+#[must_use]
 pub fn line_rows(line: &ShapedLine) -> usize {
     if let Some(image) = &line.image {
         return image.rows;
     }
-    let wrapped = line.layout.wrap_boundaries().len() + 1;
-    let glyph_height = line.layout.ascent() + line.layout.descent();
-    let height_rows = (glyph_height / px(GRID)).ceil() as usize;
-    wrapped.max(height_rows).max(1)
+    // One grid row per wrapped visual line. Headings are shaped larger than the
+    // grid pitch, but they are not rounded up to extra rows here: their glyphs
+    // are centred on the row and overflow into the explicit margin rows that
+    // `block_gap` reserves around every heading (see `src/model.rs`).
+    line.layout.wrap_boundaries().len() + 1
 }
 
 #[must_use] 

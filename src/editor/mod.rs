@@ -12,7 +12,7 @@ use std::{
 use crate::{
     model::{
         BlockId, BlockKind, DocumentModel, EditMode, EditTransaction, ListContinuation, TaskMark,
-        auto_close,
+        auto_close, block_gap,
     },
     layout::{DOCUMENT_WIDTH, GRID, PROSE_FONT},
     persistence::{self, AppConfig},

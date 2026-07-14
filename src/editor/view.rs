@@ -95,6 +95,8 @@ impl Editor {
             .iter()
             .enumerate()
             .map(|(index, block)| {
+                let prev = index.checked_sub(1).map(|j| self.document.blocks[j].kind);
+                top_row += block_gap(prev, block.kind);
                 let cache = &self.layout.shapes[&block.id];
                 let widget = BlockWidget {
                     index,
