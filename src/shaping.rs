@@ -578,6 +578,16 @@ pub fn shape_render(
         .unwrap()
         .remove(0);
     let (ascent, descent) = line_metrics(&line.text, &layout, default_metrics);
+    // A heading is laid out one grid row tall and relies on `block_gap`
+    // reserving an empty margin row on each side to absorb the glyph's overflow
+    // (see `line_rows`). That only holds while the glyph is at most three grid
+    // rows tall — its own row plus one row of overflow into each margin. Guard
+    // the coupling so a future bump to the heading sizes above can't silently
+    // collide with the neighbouring blocks.
+    debug_assert!(
+        line.level == 0 || ascent + descent <= px(GRID * 3.),
+        "heading glyph height exceeds the reserved margin budget"
+    );
     ShapedLine {
         source: 0..0,
         layout,
