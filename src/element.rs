@@ -224,6 +224,51 @@ pub(crate) fn inline_code_decorations(
     result
 }
 
+/// Highlight rectangles for the selection portion `range` (display byte offsets
+/// into one logical line's text) split into one span per visual row it touches.
+/// A logical line can wrap onto several visual rows, each with its own x origin,
+/// so a selection that crosses a wrap boundary must be decomposed per row rather
+/// than drawn as a single rectangle between its two endpoints (see issue #5).
+///
+/// `row_starts` is the display byte offset at which each visual row begins (row
+/// 0 => 0); `total` is the line's byte length; `x_of` maps a display byte offset
+/// to its x pixel in the unwrapped layout. Each returned tuple is `(row,
+/// left_x, right_x)` with the x's relative to that row's own start. When
+/// `newline` is set the line's trailing line break is selected too, so a short
+/// stub is appended past the last row's end to keep it visible.
+///
+/// Using `x_of` (`LineLayout::x_for_index`) with an explicit per-row base avoids
+/// the boundary ambiguity of `WrappedLine::position_for_index`, which resolves an
+/// index sitting exactly on a wrap boundary to the *previous* row.
+fn selection_row_spans(
+    row_starts: &[usize],
+    total: usize,
+    range: &Range<usize>,
+    newline: bool,
+    x_of: impl Fn(usize) -> f32,
+) -> Vec<(usize, f32, f32)> {
+    let last_row = row_starts.len().saturating_sub(1);
+    let mut spans = Vec::new();
+    for (row, &r_start) in row_starts.iter().enumerate() {
+        let r_end = row_starts.get(row + 1).copied().unwrap_or(total);
+        let lo = range.start.max(r_start);
+        let hi = range.end.min(r_end);
+        if lo > hi {
+            continue;
+        }
+        let base = x_of(r_start);
+        let left = x_of(lo) - base;
+        let mut right = x_of(hi) - base;
+        if newline && row == last_row {
+            right += NEWLINE_STUB;
+        }
+        if right > left {
+            spans.push((row, left, right));
+        }
+    }
+    spans
+}
+
 pub(crate) fn vertical_distance(bounds: Bounds<Pixels>, y: Pixels) -> f32 {
     if y < bounds.top() {
         (bounds.top() - y).into()
@@ -501,36 +546,39 @@ impl Element for DocumentElement {
                                 ));
                             }
                         let sel = &e.sel.range;
-                        if sel.start <= line.source.end
-                            && sel.end >= line.source.start
-                            && let (Some(a), Some(z)) = (
-                                line.layout.position_for_index(
-                                    sel.start.max(line.source.start) - line.source.start,
-                                    px(GRID),
-                                ),
-                                line.layout.position_for_index(
-                                    sel.end.min(line.source.end) - line.source.start,
-                                    px(GRID),
-                                ),
+                        if sel.start <= line.source.end && sel.end >= line.source.start {
+                            // Byte offset at which each visual row of this line
+                            // begins, in the line's own display coordinates.
+                            let unwrapped = &line.layout.unwrapped_layout;
+                            let row_starts: Vec<usize> = std::iter::once(0)
+                                .chain(line.layout.wrap_boundaries().iter().map(|wb| {
+                                    unwrapped.runs[wb.run_ix].glyphs[wb.glyph_ix].index
+                                }))
+                                .collect();
+                            let ds = sel.start.max(line.source.start) - line.source.start;
+                            let de = sel.end.min(line.source.end) - line.source.start;
+                            // The newline ending this line is selected when the
+                            // selection continues past its last character, so an
+                            // empty selected line (or the line break at the end of
+                            // any line) still shows a stub.
+                            let newline_selected = sel.end > line.source.end;
+                            for (row, left, right) in selection_row_spans(
+                                &row_starts,
+                                line.layout.len(),
+                                &(ds..de),
+                                newline_selected,
+                                |i| f32::from(unwrapped.x_for_index(i)),
                             ) {
-                                // The newline ending this line is selected when the
-                                // selection continues past its last character. Draw a
-                                // small stub for it so selecting an empty line (or the
-                                // line break at the end of any line) stays visible.
-                                let newline_selected = sel.end > line.source.end;
-                                let right = paint_origin.x
-                                    + z.x
-                                    + if newline_selected { px(NEWLINE_STUB) } else { px(0.) };
-                                if right > paint_origin.x + a.x {
-                                    selections.push(fill(
-                                        Bounds::from_corners(
-                                            point(paint_origin.x + a.x, paint_origin.y + a.y),
-                                            point(right, paint_origin.y + z.y + px(GRID)),
-                                        ),
-                                        colors.selection,
-                                    ));
-                                }
+                                let top = paint_origin.y + px(row as f32 * GRID);
+                                selections.push(fill(
+                                    Bounds::from_corners(
+                                        point(paint_origin.x + px(left), top),
+                                        point(paint_origin.x + px(right), top + px(GRID)),
+                                    ),
+                                    colors.selection,
+                                ));
                             }
+                        }
                     }
                     lines.push(hit);
                     row += n;
