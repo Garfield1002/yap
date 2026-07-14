@@ -605,15 +605,16 @@ pub fn rows(lines: &[ShapedLine]) -> usize {
     lines.iter().map(line_rows).sum()
 }
 
-#[must_use] 
+#[must_use]
 pub fn line_rows(line: &ShapedLine) -> usize {
     if let Some(image) = &line.image {
         return image.rows;
     }
-    let wrapped = line.layout.wrap_boundaries().len() + 1;
-    let glyph_height = line.layout.ascent() + line.layout.descent();
-    let height_rows = (glyph_height / px(GRID)).ceil() as usize;
-    wrapped.max(height_rows).max(1)
+    // One grid row per wrapped visual line. Headings are shaped larger than the
+    // grid pitch, but they are not rounded up to extra rows here: their glyphs
+    // are centred on the row and overflow into the explicit margin rows that
+    // `block_gap` reserves around every heading (see `src/model.rs`).
+    line.layout.wrap_boundaries().len() + 1
 }
 
 #[must_use] 
