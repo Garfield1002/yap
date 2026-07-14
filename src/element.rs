@@ -31,6 +31,10 @@ const QUOTE_STEP: f32 = 14.;
 /// Horizontal indent, in pixels, added per nested-list level.
 const LIST_STEP: f32 = 22.;
 
+/// Vertical inset, in pixels, trimmed from each end of a blockquote bar so it
+/// hugs the text rather than filling the full grid row.
+const QUOTE_BAR_PAD: f32 = 4.;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RenderClass {
     Blank,
@@ -384,7 +388,13 @@ impl Element for DocumentElement {
                     let depth = f32::from(line.depth);
                     // Blockquotes inset from the left (one step per nesting level,
                     // leaving room for a bar); nested list items indent likewise.
-                    let quote_inset = if line.quote { depth.mul_add(QUOTE_STEP, 4.) } else { 0. };
+                    // Sit the text just past the innermost bar, not a full step
+                    // beyond it.
+                    let quote_inset = if line.quote {
+                        f32::from(line.depth.saturating_sub(1)).mul_add(QUOTE_STEP, 10.)
+                    } else {
+                        0.
+                    };
                     let list_inset = if line.quote || line.code { 0. } else { depth * LIST_STEP };
                     let left_inset = code_inset + quote_inset + list_inset;
                     let lb = Bounds::new(
@@ -658,7 +668,11 @@ impl Element for DocumentElement {
             window.paint_quad(fill(*rule, colors.border).corner_radii(px(1.)));
         }
         for bar in &p.quote_bars {
-            window.paint_quad(fill(*bar, colors.fg_faint).corner_radii(px(1.)));
+            let padded = Bounds::from_corners(
+                point(bar.left(), bar.top() + px(QUOTE_BAR_PAD)),
+                point(bar.right(), bar.bottom() - px(QUOTE_BAR_PAD)),
+            );
+            window.paint_quad(fill(padded, colors.fg_faint).corner_radii(px(1.)));
         }
         for l in &p.lines {
             let _ = l.layout.paint(
