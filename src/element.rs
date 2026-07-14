@@ -407,7 +407,7 @@ impl Element for DocumentElement {
                                     bounds.left() + px(f32::from(level).mul_add(QUOTE_STEP, INSET)),
                                     cell_top,
                                 ),
-                                size(px(3.), px(n as f32 * GRID)),
+                                size(px(2.), px(n as f32 * GRID)),
                             ));
                         }
                     }
@@ -527,6 +527,30 @@ impl Element for DocumentElement {
                 }
             }
         }
+        // Bars are collected one row at a time; merge contiguous segments in the
+        // same column into a single run so a multi-line quote reads as one
+        // unbroken bar instead of a stack of rounded pills.
+        quote_bars.sort_by(|a, b| {
+            a.left()
+                .partial_cmp(&b.left())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.top().partial_cmp(&b.top()).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        let mut merged_bars: Vec<Bounds<Pixels>> = Vec::new();
+        for bar in quote_bars {
+            if let Some(last) = merged_bars.last_mut()
+                && (last.left() - bar.left()).abs() < px(0.5)
+                && bar.top() <= last.bottom() + px(0.5)
+            {
+                *last = Bounds::from_corners(
+                    last.origin,
+                    point(last.right(), last.bottom().max(bar.bottom())),
+                );
+            } else {
+                merged_bars.push(bar);
+            }
+        }
+        let quote_bars = merged_bars;
         let checkboxes = lines
             .iter()
             .filter_map(|line| {
@@ -634,7 +658,7 @@ impl Element for DocumentElement {
             window.paint_quad(fill(*rule, colors.border).corner_radii(px(1.)));
         }
         for bar in &p.quote_bars {
-            window.paint_quad(fill(*bar, colors.fg_faint).corner_radii(px(1.5)));
+            window.paint_quad(fill(*bar, colors.fg_faint).corner_radii(px(1.)));
         }
         for l in &p.lines {
             let _ = l.layout.paint(
