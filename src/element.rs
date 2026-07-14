@@ -31,9 +31,9 @@ const QUOTE_STEP: f32 = 14.;
 /// Horizontal indent, in pixels, added per nested-list level.
 const LIST_STEP: f32 = 22.;
 
-/// Vertical inset, in pixels, trimmed from each end of a blockquote bar so it
-/// hugs the text rather than filling the full grid row.
-const QUOTE_BAR_PAD: f32 = 4.;
+/// Vertical inset, in pixels, trimmed from the top of a blockquote bar so its
+/// first row starts below the top of the grid row (the bottom is left flush).
+const QUOTE_BAR_TOP_TRIM: f32 = 7.;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RenderClass {
@@ -669,8 +669,8 @@ impl Element for DocumentElement {
         }
         for bar in &p.quote_bars {
             let padded = Bounds::from_corners(
-                point(bar.left(), bar.top() + px(QUOTE_BAR_PAD)),
-                point(bar.right(), bar.bottom() - px(QUOTE_BAR_PAD)),
+                point(bar.left(), bar.top() + px(QUOTE_BAR_TOP_TRIM)),
+                point(bar.right(), bar.bottom()),
             );
             window.paint_quad(fill(padded, colors.fg_faint).corner_radii(px(1.)));
         }
