@@ -832,3 +832,63 @@ impl Element for DocumentElement {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Synthetic monospace layout: every byte is 10px wide, so a byte offset's x
+    // is `offset * 10`, letting us assert span geometry without shaping text.
+    fn mono(i: usize) -> f32 {
+        i as f32 * 10.0
+    }
+
+    #[test]
+    fn single_row_selection_is_one_span() {
+        // A 20-byte line that does not wrap: rows = [0], total = 20.
+        let spans = selection_row_spans(&[0], 20, &(3..8), false, mono);
+        assert_eq!(spans, vec![(0, 30.0, 80.0)]);
+    }
+
+    #[test]
+    fn selection_crossing_wrap_boundary_splits_per_row() {
+        // 30-byte line wrapping after byte 20: rows start at [0, 20].
+        // Select the whole line (0..30). Row 0 must span to its *own* text end
+        // (byte 20 => 200px), not be clipped to row 1's width — the regression.
+        let spans = selection_row_spans(&[0, 20], 30, &(0..30), false, mono);
+        assert_eq!(
+            spans,
+            vec![
+                (0, 0.0, 200.0),  // full first row, relative to its own start
+                (1, 0.0, 100.0),  // second row: (20..30) minus row-1 base of 200
+            ]
+        );
+    }
+
+    #[test]
+    fn newline_stub_only_on_last_row() {
+        let spans = selection_row_spans(&[0, 20], 30, &(0..30), true, mono);
+        assert_eq!(
+            spans,
+            vec![
+                (0, 0.0, 200.0),
+                (1, 0.0, 100.0 + NEWLINE_STUB),
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_line_with_selected_newline_is_a_stub() {
+        // An empty line: total = 0, one row starting at 0. Selecting its line
+        // break must still leave a visible stub.
+        let spans = selection_row_spans(&[0], 0, &(0..0), true, mono);
+        assert_eq!(spans, vec![(0, 0.0, NEWLINE_STUB)]);
+    }
+
+    #[test]
+    fn empty_overlap_pushes_nothing() {
+        // Zero-width overlap with no selected newline draws no highlight.
+        let spans = selection_row_spans(&[0, 20], 30, &(20..20), false, mono);
+        assert!(spans.is_empty());
+    }
+}
